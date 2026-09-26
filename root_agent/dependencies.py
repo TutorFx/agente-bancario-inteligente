@@ -14,13 +14,11 @@ __all__ = [
     "get_banco_agil_adapter",
 ]
 
-_banco_agil_adapter = None
+from functools import lru_cache
 
+@lru_cache(maxsize=1)
 def get_banco_agil_adapter():
-    global _banco_agil_adapter
-    if _banco_agil_adapter is None:
-        _banco_agil_adapter = BancoAgilAdapter()
-    return _banco_agil_adapter
+    return BancoAgilAdapter()
 
 autenticar_cliente = get_autenticacao_tool(get_banco_agil_adapter())
 consultar_limite, solicitar_aumento_limite, _, calcular_e_atualizar_score = get_credito_tools(get_banco_agil_adapter())
