@@ -1,0 +1,4 @@
+cpf,nome,data_nascimento,score_credito,limite_credito,conta
+12345678900,João Silva,15/03/1985,824,50000.00,0001
+98765432100,Maria Santos,22/07/1990,580,2500.00,0002
+11122233344,Carlos Oliveira,08/11/1978,850,12000.00,0003
