@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  app:
+    container_name: banco-agil-agent
+    build: .
+    env_file:
+      - .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1
+    network_mode: "host"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./root_agent/.adk:/app/root_agent/.adk
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - tmp_venv/
+            - .venv/
+            - __pycache__/
+            - .adk/
+            - root_agent/.adk/
+        - action: rebuild
+          path: requirements.txt

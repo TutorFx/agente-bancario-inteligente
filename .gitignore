@@ -1,0 +1,39 @@
+# Environment variables
+.env
+
+# Python virtual environment
+.venv/
+tmp_venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Local volumes for database storage
+volumes/
+
+# IDE files
+.idea/
+.vscode/
+
+# CSV locks and temporary files
+data/.*.lock
+data/*.lock
+data/*.tmp
+*.lock
+
+# Testing and coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ADK runtime files
+.adk/
+root_agent/.adk/
+

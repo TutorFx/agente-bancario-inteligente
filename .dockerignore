@@ -1,0 +1,14 @@
+volumes/
+tmp_venv/
+.venv/
+.git/
+.idea/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.env
+.env.*
+.pytest_cache/
+.ruff_cache/
+*.log
