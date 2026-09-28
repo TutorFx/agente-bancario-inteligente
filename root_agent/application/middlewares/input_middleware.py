@@ -26,6 +26,7 @@ from root_agent.domain.conversation_state import (
     ENTREVISTA_KEY,
     ENTREVISTA_REALIZADA_KEY,
     GUARDRAIL_ENTRADA_KEY,
+    resetar_autenticacao,
 )
 from root_agent.application.presenters.banking_presenter import BankingPresenter
 from root_agent.domain.guardrails import (
@@ -157,32 +158,14 @@ def _limpar_estado(callback_context: CallbackContext) -> None:
     callback_context.state[CONVERSATION_STATE_KEY] = BankingConversationState.IDLE
 
 def _disparar_encerramento(callback_context: CallbackContext) -> None:
-    from root_agent.dependencies import encerrar_atendimento
+    # Reset síncrono no state do callback: vai no state_delta do evento deste turno. Agendar a
+    # tool encerrar_atendimento em outra task disputava com a persistência do evento.
     try:
         if hasattr(callback_context, "state") and callback_context.state is not None:
-            callback_context.state[CLIENTE_KEY] = None
-            callback_context.state["cliente_autenticado"] = None
-            callback_context.state["is_authenticated"] = False
-            callback_context.state[AUTH_CPF_TEMP_KEY] = None
-            callback_context.state["auth_data_temp"] = None
-            callback_context.state[AUTH_TENTATIVAS_KEY] = 0
-            callback_context.state[CONVERSATION_STATE_KEY] = BankingConversationState.IDLE.value
-            callback_context.state[ENTREVISTA_KEY] = None
-            callback_context.state[ENTREVISTA_REALIZADA_KEY] = False
-            callback_context.state['session_active'] = False
-            callback_context.state['cpf'] = None
-            callback_context.state['nome'] = None
-            callback_context.state['tentativas_login'] = 0
+            resetar_autenticacao(callback_context.state)
         if hasattr(callback_context, "actions") and callback_context.actions:
             callback_context.actions.transfer_to_agent = "agente_triagem"
             callback_context.actions.end_of_agent = True
-        coro = encerrar_atendimento(callback_context=callback_context)
-        if asyncio.iscoroutine(coro):
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(coro)
-            except RuntimeError:
-                asyncio.run(coro)
     except Exception:
         logger.exception("Erro ao disparar encerramento de sessão")
 

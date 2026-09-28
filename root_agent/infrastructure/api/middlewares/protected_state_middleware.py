@@ -5,12 +5,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from root_agent.domain.conversation_state import (
-    AUTH_CPF_TEMP_KEY,
-    AUTH_TENTATIVAS_KEY,
-    CLIENTE_KEY,
-    CONVERSATION_STATE_KEY,
-    ENTREVISTA_KEY,
-    ENTREVISTA_REALIZADA_KEY,
+    ESTADO_SEM_AUTENTICACAO,
     GUARDRAIL_ENTRADA_KEY,
     GUARDRAIL_METRICAS_KEY,
 )
@@ -20,23 +15,11 @@ logger = get_logger("middleware.protected_state")
 
 # Chaves que só o backend (callbacks/tools) pode escrever. Se o cliente HTTP pudesse
 # enviá-las, bastaria criar uma sessão com {"is_authenticated": true} para pular a triagem.
-CHAVES_PROTEGIDAS = frozenset({
-    "is_authenticated",
-    CLIENTE_KEY,
-    AUTH_TENTATIVAS_KEY,
-    AUTH_CPF_TEMP_KEY,
-    "auth_data_temp",
-    CONVERSATION_STATE_KEY,
-    ENTREVISTA_KEY,
-    ENTREVISTA_REALIZADA_KEY,
-    "session_active",
-    "cpf",
-    "nome",
-    "tentativas_login",
+CHAVES_PROTEGIDAS = frozenset(ESTADO_SEM_AUTENTICACAO) | {
     # Um veredito forjado via stateDelta faria o turno pular o classificador de entrada
     GUARDRAIL_ENTRADA_KEY,
     GUARDRAIL_METRICAS_KEY,
-})
+}
 
 _CAMPOS_DE_ESTADO = ("state", "stateDelta", "state_delta")
 
