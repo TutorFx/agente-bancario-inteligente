@@ -26,7 +26,7 @@ class SessionConflictMiddleware(BaseHTTPMiddleware):
         if request.method == "POST" and "sessions" in request.url.path and "run" not in request.url.path:
             import re
             
-            # Regex robusto para capturar app_name, user_id e opcionalmente session_id,
+            # Regex para capturar app_name, user_id e opcionalmente session_id,
             # independente de prefixos na URL (ex: /api/v1/apps/...)
             match = re.search(r"/apps/(?P<app_name>[^/]+)/users/(?P<user_id>[^/]+)/sessions(?:/(?P<session_id>[^/]+))?", request.url.path)
             

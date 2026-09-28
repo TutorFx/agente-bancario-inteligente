@@ -178,7 +178,7 @@ class TestCambioCotacao:
 
     @pytest.mark.asyncio
     async def test_get_cotacao_moeda_ausente_no_provedor(self, adapter):
-        """Requisição bem-sucedida, mas o provedor não retorna taxa para a moeda —
+        """Requisição bem-sucedida, mas o provedor não retorna taxa para a moeda:
         deve ser sinalizado como 'moeda_indisponivel_no_provedor', não como falha
         geral de serviço."""
         mock_response = MagicMock()
@@ -393,4 +393,4 @@ class TestConcorrenciaERaceConditions:
             assert score_res is False
         finally:
             external_lock.release()
-
+

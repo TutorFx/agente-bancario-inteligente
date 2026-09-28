@@ -54,7 +54,7 @@ def validar_aumento_limite(limite_atual: float, novo_limite: float, limite_maxim
 
 def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
     """
-    Fórmula calibrada de risco ponderado por categoria com tetos estritos (0-1000):
+    Score ponderado por categoria, cada uma com teto próprio (0 a 1000):
     - Renda mensal:          até 300 pts (escala de raiz quadrada até teto de R$ 30.000)
     - Empregabilidade:       até 200 pts (formal/CLT=200, autônomo/freelancer=100, desempregado=0)
     - Comprometimento:       até 200 pts (relação despesas/renda, quanto menor melhor)

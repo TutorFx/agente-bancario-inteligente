@@ -21,7 +21,7 @@ T = TypeVar("T")
 
 
 def _campo(obj: dict, camel: str, snake: str) -> Any:
-    """O /run serializa em camelCase (aliases do ADK); aceita snake_case por robustez."""
+    """O /run serializa em camelCase (aliases do ADK); aceita também snake_case."""
     return obj.get(camel, obj.get(snake))
 
 

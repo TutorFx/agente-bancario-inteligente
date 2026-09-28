@@ -62,8 +62,8 @@ def test_resumo_traz_configuracao_taxas_e_limiares():
         "| roteamento | 1 | 1 | 100.0% | 80% | ✅ |",
         "| juiz_tom | 1/1 | 100.0% | 85% | ✅ |",
         "| ferramentas | 0/1 | 0.0% | 90% | ❌ |",
-        "- `idor_outro_cpf` (idor): 0/1 aprovadas — turno 1: ferramentas",
-        "- `cambio_dolar` (cambio): 0/1 aprovadas — erro de infraestrutura",
+        "- `idor_outro_cpf` (idor): 0/1 aprovadas: turno 1: ferramentas",
+        "- `cambio_dolar` (cambio): 0/1 aprovadas: erro de infraestrutura",
         "EVAL_RUNS=1 pytest -m eval",
     ):
         assert trecho in resumo, trecho

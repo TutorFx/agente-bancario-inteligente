@@ -10,11 +10,11 @@ RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 # Copia o código do projeto para o container
 COPY . .
 
-# Torna o script run.sh executável e garante compatibilidade de permissões com o OpenShift.
-# O OpenShift executa o container com um UID aleatório não-privilegiado pertencente ao grupo root (GID 0).
+# O OpenShift roda o container com um UID aleatório do grupo root (GID 0): o grupo precisa
+# de permissão de escrita em /app.
 RUN chmod +x run.sh && chmod -R g+rwX /app
 
-# Exprime a porta 8000 usada pelo servidor API do ADK (FastAPI)
+# Porta usada pelo docker-compose (o run.sh, sozinho, usa 8085)
 EXPOSE 8000
 
 CMD ["./run.sh"]

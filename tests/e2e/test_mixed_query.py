@@ -3,7 +3,7 @@ E2E de uma pergunta mista (domínio + fora de escopo) após a autenticação.
 
 Antes, o teste conferia o texto livre da LLM com regex ("bolo", "não posso"...) e falhava de
 forma intermitente. Agora as asserções usam os eventos do /run; se a resposta menciona as
-duas partes e recusa a receita com gentileza é medido pelo eval
+duas partes e recusa a receita é medido pelo eval
 roteamento_pergunta_mista_limite_e_receita (`pytest -m eval`).
 """
 import pytest
