@@ -146,6 +146,32 @@ def test_calcular_score_desempregado_com_dividas():
     assert detalhes["parcela_dependentes"] == 50
 
 
+@pytest.mark.parametrize("resposta", ["sim", "tenho sim", "talvez", "", "yes"])
+def test_calcular_score_dividas_ambiguas_sao_tratadas_como_divida(resposta):
+    entrevista = {
+        "renda_mensal": 5000.0,
+        "tipo_emprego": "formal",
+        "despesas_mensais": 1000.0,
+        "num_dependentes": 0,
+        "tem_dividas": resposta,
+    }
+    _, detalhes = calcular_score_detalhado(entrevista)
+    assert detalhes["parcela_dividas"] == 0
+
+
+@pytest.mark.parametrize("resposta", ["nao", "não", "N", "não tenho", "false"])
+def test_calcular_score_ausencia_explicita_de_dividas_pontua(resposta):
+    entrevista = {
+        "renda_mensal": 5000.0,
+        "tipo_emprego": "formal",
+        "despesas_mensais": 1000.0,
+        "num_dependentes": 0,
+        "tem_dividas": resposta,
+    }
+    _, detalhes = calcular_score_detalhado(entrevista)
+    assert detalhes["parcela_dividas"] == 150
+
+
 def test_mensagem_data_invalida_nao_vaza_dados_de_clientes():
     from root_agent.application.presenters.banking_presenter import BankingPresenter
     import csv
