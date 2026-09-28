@@ -131,7 +131,7 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
 1. **Clonar ou Baixar o Repositório:**
    ```bash
    # Opção A: Clonar via Git
-   git clone <URL_DO_REPOSITORIO>
+   git clone https://github.com/TutorFx/agente-bancario-inteligente.git
    cd agente
 
    # Opção B: Se baixou o arquivo .zip do GitHub, extraia-o e acesse a pasta descompactada pelo terminal:
