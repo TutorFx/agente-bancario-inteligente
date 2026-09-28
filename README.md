@@ -170,8 +170,9 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
    ```env
    GEMINI_API_KEY=sua_chave_gemini_aqui
    ```
-   > As variáveis opcionais `LLM_MODEL_NAME`, `LLM_BASE_URL` e `LLM_API_KEY` permitem trocar o modelo/provedor via LiteLLM (padrão: `gemini/gemini-2.5-flash`).
-   > Para acessar a API de outra máquina ou container, defina `BANCO_AGIL_API_TOKEN` no `.env` (o Streamlit envia o mesmo valor). `BANCO_AGIL_DEV_UI=true` liga a interface de desenvolvimento do ADK em `/dev-ui`.
+   > A chave também pode vir de `GOOGLE_API_KEY` ou `LLM_API_KEY` (esta tem prioridade). As variáveis opcionais `LLM_MODEL_NAME`, `LLM_BASE_URL` e `LLM_API_KEY` permitem trocar o modelo/provedor via LiteLLM (padrão: `gemini/gemini-2.5-flash`).
+   > As variáveis `GUARDRAIL_*` ajustam os guardrails via LLM (modelo, timeout e política de falha); os padrões estão comentados no [`.env.example`](.env.example). `LOG_LEVEL` define o nível de log (padrão: `INFO`).
+   > Para acessar a API de outra máquina ou container, defina `BANCO_AGIL_API_TOKEN` no `.env` (o Streamlit envia o mesmo valor; a API aceita `Authorization: Bearer <token>` ou `X-API-Key`). `BANCO_AGIL_DEV_UI=true` liga a interface de desenvolvimento do ADK em `/dev-ui`.
    > **Windows:** ao criar o arquivo pelo Bloco de Notas, salve como `Todos os arquivos (*.*)` com o nome `.env`, para que ele não fique como `.env.txt`.
 
 5. **Iniciar o Servidor Backend (API / Google ADK):**
