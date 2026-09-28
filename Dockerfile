@@ -6,10 +6,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 
-# Baixa e armazena em cache os pacotes do NLTK em um diretório global compartilhado.
-# Isso evita downloads em runtime e erros de permissão de escrita no OpenShift.
-RUN python -m nltk.downloader -d /usr/share/nltk_data punkt punkt_tab stopwords
-ENV NLTK_DATA=/usr/share/nltk_data
 
 # Copia o código do projeto para o container
 COPY . .

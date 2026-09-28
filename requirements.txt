@@ -4,13 +4,7 @@ requests==2.34.1
 httpx==0.28.1
 litellm>=1.93.0
 pydantic==2.13.4
-pymilvus==3.0.0
-pymilvus.model==0.3.2
-pandas==2.3.3
 google-genai==1.75.0
-scipy>=1.15.3
-openpyxl==3.1.5
-nltk==3.9.4
 fastapi==0.136.1
 uvicorn==0.46.0
 pytest>=8.0.0
