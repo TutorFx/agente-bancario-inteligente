@@ -1,69 +1,61 @@
+"""
+E2E de uma pergunta mista (domínio + fora de escopo) após a autenticação.
+
+Antes, o teste conferia o texto livre da LLM com regex ("bolo", "não posso"...) e falhava de
+forma intermitente. Agora as asserções usam os eventos do /run; se a resposta menciona as
+duas partes e recusa a receita com gentileza é medido pelo eval
+roteamento_pergunta_mista_limite_e_receita (`pytest -m eval`).
+"""
 import pytest
-import uuid
-import re
-from httpx import AsyncClient
-from unittest.mock import AsyncMock
+
 from root_agent.domain.models import ClienteDTO
+from tests.e2e.apoio import autenticar_por_numeros, com_retentativa
+
+CLIENTE = ClienteDTO(
+    cpf="12345678901",
+    nome="Carlos Silva",
+    data_nascimento="15/03/1985",
+    limite_credito=5000.0,
+    score_credito=750,
+    conta="0001",
+)
+
 
 @pytest.fixture
 def mock_banco_agil_cliente(mocker):
-    """Fixture para simular um cliente autenticado com sucesso."""
-    cliente = ClienteDTO(
-        cpf="12345678901",
-        nome="Carlos Silva",
-        data_nascimento="15/03/1985",
-        limite_credito=5000.0,
-        score_credito=750,
-        conta="0001"
-    )
-    mocker.patch(
-        "root_agent.dependencies.banco_agil_adapter.buscar_cliente",
-        return_value=cliente
-    )
-    return mocker.patch(
-        "root_agent.dependencies.banco_agil_adapter.autenticar",
-        return_value=cliente
-    )
+    """Cliente autenticado com sucesso e encontrado pela consulta de limite."""
+    mocker.patch("root_agent.dependencies.banco_agil_adapter.buscar_cliente", return_value=CLIENTE)
+    return mocker.patch("root_agent.dependencies.banco_agil_adapter.autenticar", return_value=CLIENTE)
 
-@pytest.mark.asyncio
-async def test_mixed_query_apos_autenticacao(local_client: AsyncClient, mock_banco_agil_cliente):
+
+@pytest.mark.e2e
+async def test_mixed_query_apos_autenticacao(nova_conversa, mock_banco_agil_cliente):
     """
-    Testa que, após a autenticação, o agente consegue lidar com uma pergunta
-    que mistura um tópico do domínio (crédito) com um tópico fora de escopo (receita),
-    acionando a resposta de "fora de escopo" corretamente.
+    Uma mensagem que mistura limite de crédito com receita de bolo não é tratada como ataque
+    (a sessão continua autenticada) e a parte bancária é atendida com dados reais: a triagem
+    transfere para agente_credito, que consulta o limite pela tool.
+
+    O roteamento é decisão da LLM: se divergir, a conversa inteira é repetida uma vez
+    (com_retentativa, com aviso). O valor devolvido pela tool vem do mock e é determinístico:
+    se divergir, pytest.fail falha na hora, sem nova tentativa.
     """
-    session_id = f"sess_mixed_{uuid.uuid4().hex[:8]}"
-    user_id = "556299999999"
+    async def cenario():
+        conversa = await nova_conversa("556299999999")
+        await autenticar_por_numeros(conversa, "123.456.789-01", "15/03/1985", "Carlos Silva")
 
-    url_session = f"/apps/root_agent/users/{user_id}/sessions"
-    res_session = await local_client.post(url_session, json={"sessionId": session_id})
-    assert res_session.status_code == 200, f"Falha ao criar sessão: {res_session.text}"
+        mista = await conversa.enviar("Legal! Agora quero saber meu limite e também como fazer um bolo")
 
-    async def interact(message_text: str) -> str:
-        payload = {
-            "appName": "root_agent",
-            "userId": user_id,
-            "sessionId": session_id,
-            "newMessage": { "parts": [{"text": message_text}] }
-        }
-        res = await local_client.post("/run", json=payload)
-        res.raise_for_status()
-        data = res.json()
-        return data[-1]["content"]["parts"][0]["text"]
-    
-    # Etapa 1: Autenticação completa
-    await interact("Olá")
-    await interact("Meu CPF é 123.456.789-01")
-    resp_auth = await interact("Nasci em 15/03/1985")
-    assert re.search(r"Carlos|confirmada|limite|prazer", resp_auth, re.IGNORECASE)
-    
-    # Etapa 2: Pergunta Mista (Domínio + Fora de Escopo)
-    resp_mixed = await interact("Legal! Agora quero saber meu limite e também como fazer um bolo")
+        assert (await conversa.estado()).get("is_authenticated") is True, (
+            f"a pergunta mista encerrou o atendimento (classificada como ataque?): {mista.texto[:200]!r}"
+        )
+        assert "agente_credito" in mista.transferencias, (
+            f"parte de crédito não roteada: transferências={mista.transferencias} texto={mista.texto[:200]!r}"
+        )
+        assert "consultar_limite_credito" in mista.tools_chamadas, (
+            f"limite não consultado: tools={mista.tools_chamadas} texto={mista.texto[:200]!r}"
+        )
+        for resposta in mista.respostas_tool("consultar_limite_credito"):
+            if not (isinstance(resposta, dict) and resposta.get("limite_credito") == 5000.0):
+                pytest.fail(f"consultar_limite_credito devolveu {resposta!r}, esperado limite 5000.0 do mock")
 
-    # Validação: A resposta deve tratar ambas as partes da pergunta.
-    # 1. Reconhecer a parte que está fora de escopo.
-    assert re.search(r"bolo|receita", resp_mixed, re.IGNORECASE), "Não mencionou o tópico fora de escopo."
-    assert re.search(r"não posso|não consigo|fora d[oe].*escopo|serviços bancários", resp_mixed, re.IGNORECASE), "Não deu a resposta padrão de 'fora de escopo'."
-
-    # 2. Endereçar a parte do domínio (crédito), possivelmente delegando-a.
-    assert re.search(r"limite|crédito|agente de crédito", resp_mixed, re.IGNORECASE), "Não endereçou a parte sobre crédito."
+    await com_retentativa(cenario)

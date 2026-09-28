@@ -147,6 +147,18 @@ scenarios:
         agent: agente_credito
         tools: [{name: consultar_limite_credito}]
 
+  # Parte semântica do E2E tests/e2e/test_mixed_query.py: atende o limite e recusa a receita
+  - id: roteamento_pergunta_mista_limite_e_receita
+    category: roteamento
+    auth: maria
+    turns:
+      - user: "Legal! Agora quero saber meu limite e também como fazer um bolo"
+        agent: agente_credito
+        tools: [{name: consultar_limite_credito}]
+        reply_matches: ['2\.?500', 'bolo|receita']
+        reply_not_matches: 'farinha|ovos|forno'
+    final_state: {is_authenticated: true}
+
   - id: roteamento_sem_auth_limite
     category: roteamento
     turns:
