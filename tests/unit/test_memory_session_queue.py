@@ -1,6 +1,5 @@
 """Testes unitários para o MemorySessionQueue (LRU eviction e rate limiting)."""
 
-import asyncio
 import pytest
 
 from root_agent.infrastructure.api.queue.memory_session_queue import MemorySessionQueue
