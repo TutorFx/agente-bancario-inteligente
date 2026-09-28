@@ -27,6 +27,7 @@ from root_agent.domain.conversation_state import (
     ENTREVISTA_REALIZADA_KEY,
     GUARDRAIL_ENTRADA_KEY,
 )
+from root_agent.domain.pii import mascarar_pii
 from root_agent.application.presenters.banking_presenter import BankingPresenter
 from root_agent.domain.guardrails import (
     validar_formato_cpf,
@@ -104,15 +105,9 @@ def _extrair_texto_usuario(llm_request: LlmRequest) -> str | None:
         pass
     return None
 
-# CPF (com ou sem pontuação) e datas DD/MM/AAAA. Credenciais de login nunca vão para a LLM:
+# CPF (em qualquer formato que o login aceita) e datas. Credenciais de login nunca vão para a LLM:
 # o histórico da sessão guarda a mensagem original do usuário e seria reenviado a cada turno.
-_REGEX_CPF = re.compile(r"(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)")
-_REGEX_DATA = re.compile(r"(?<!\d)\d{2}[/-]\d{2}[/-]\d{4}(?!\d)")
-
-
-def _mascarar_pii(texto: str) -> str:
-    texto = _REGEX_CPF.sub("[CPF omitido]", texto)
-    return _REGEX_DATA.sub("[data omitida]", texto)
+_mascarar_pii = mascarar_pii
 
 
 def _mascarar_pii_no_request(llm_request: LlmRequest) -> None:

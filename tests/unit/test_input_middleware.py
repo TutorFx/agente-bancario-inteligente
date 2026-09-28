@@ -48,6 +48,11 @@ def test_extrair_texto_usuario_vazio():
     ("nasci em 15/03/1985", "nasci em [data omitida]"),
     ("15-03-1985", "[data omitida]"),
     ("quero 8000 de limite", "quero 8000 de limite"),
+    # Aceitos pelo login (ou comuns), mas antes chegavam à LLM nos turnos seguintes
+    ("123 456 789 00", "[CPF omitido]"),
+    ("nasci em 15 de março de 1985", "nasci em [data omitida]"),
+    ("1985-03-15", "[data omitida]"),
+    ("R$ 8.000,00", "R$ 8.000,00"),
 ])
 def test_mascarar_pii(texto, esperado):
     assert _mascarar_pii(texto) == esperado
