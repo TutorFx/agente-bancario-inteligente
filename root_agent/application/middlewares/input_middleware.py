@@ -1,5 +1,4 @@
 import re
-import json
 import asyncio
 
 from root_agent.utils import get_logger
@@ -55,19 +54,24 @@ def _extrair_texto_usuario(llm_request: LlmRequest) -> str | None:
         pass
     return None
 
-def _substituir_texto_usuario(llm_request: LlmRequest, novo_texto: str) -> None:
-    try:
-        contents = llm_request.contents
-        if not contents:
-            return
-        for content in reversed(contents):
-            if content.role == "user" and content.parts:
-                for part in reversed(content.parts):
-                    if hasattr(part, "text") and part.text:
-                        part.text = novo_texto
-                        return
-    except (AttributeError, TypeError):
-        pass
+# CPF (com ou sem pontuação) e datas DD/MM/AAAA. Credenciais de login nunca vão para a LLM:
+# o histórico da sessão guarda a mensagem original do usuário e seria reenviado a cada turno.
+_REGEX_CPF = re.compile(r"(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)")
+_REGEX_DATA = re.compile(r"(?<!\d)\d{2}[/-]\d{2}[/-]\d{4}(?!\d)")
+
+
+def _mascarar_pii(texto: str) -> str:
+    texto = _REGEX_CPF.sub("[CPF omitido]", texto)
+    return _REGEX_DATA.sub("[data omitida]", texto)
+
+
+def _mascarar_pii_no_request(llm_request: LlmRequest) -> None:
+    for content in llm_request.contents or []:
+        if content.role != "user" or not content.parts:
+            continue
+        for part in content.parts:
+            if getattr(part, "text", None):
+                part.text = _mascarar_pii(part.text)
 
 def _construir_resposta(texto: str) -> LlmResponse:
     return LlmResponse(
@@ -134,57 +138,53 @@ def _tratar_aguardando_cpf(ctx: CallbackContext, texto: str, llm_request: LlmReq
     ctx.state[CONVERSATION_STATE_KEY] = BankingConversationState.AGUARDANDO_DATA_NASCIMENTO
     return _construir_resposta(BankingPresenter.solicitar_data_nascimento())
 
-def _tratar_aguardando_data_nascimento(ctx: CallbackContext, texto: str, llm_request: LlmRequest) -> LlmResponse | None:
+def _tratar_aguardando_data_nascimento(ctx: CallbackContext, texto: str) -> LlmResponse:
+    """Autentica direto no adapter: CPF e data nunca passam pela LLM."""
+    from root_agent.dependencies import get_banco_agil_adapter
+
     data_extraida = extrair_data(texto)
     if not data_extraida:
         return _construir_resposta(BankingPresenter.data_invalida())
 
-    ctx.state["auth_data_temp"] = data_extraida
-    _limpar_estado(ctx)
-    _substituir_texto_usuario(
-        llm_request,
-        f"Cliente quer se autenticar. CPF: {ctx.state[AUTH_CPF_TEMP_KEY]}, "
-        f"Data: {ctx.state['auth_data_temp']}. "
-        "Chame IMEDIATAMENTE autenticar_cliente com esses dados."
-    )
-    return None
+    cpf = ctx.state.get(AUTH_CPF_TEMP_KEY)
+    ctx.state[AUTH_CPF_TEMP_KEY] = None
+    ctx.state["auth_data_temp"] = None
+    if not cpf:
+        return _tratar_resultado_autenticacao(ctx, {"erro": "cpf_ausente"})
 
-def _decodificar_resposta_tool(response) -> dict | None:
-    """O ADK encapsula retornos não-dict como {"result": ...}; a tool devolve JSON em string."""
-    payload = response
-    if isinstance(payload, dict) and isinstance(payload.get("result"), str):
-        payload = payload["result"]
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except (json.JSONDecodeError, TypeError):
-            return None
-    return payload if isinstance(payload, dict) else None
+    try:
+        cliente = get_banco_agil_adapter().autenticar(cpf, data_extraida)
+    except Exception:
+        logger.exception("Erro técnico ao autenticar cliente")
+        return _tratar_resultado_autenticacao(ctx, {"erro": "erro_tecnico"})
+
+    if cliente is None:
+        return _tratar_resultado_autenticacao(ctx, {"autenticado": False, "erro": "credenciais_invalidas"})
+    return _tratar_resultado_autenticacao(ctx, {"autenticado": True, "cliente": cliente.model_dump()})
 
 
-def _tratar_resultado_autenticacao(ctx: CallbackContext, response) -> LlmResponse | None:
+def _tratar_resultado_autenticacao(ctx: CallbackContext, payload: dict) -> LlmResponse:
     """
     Fail-closed: só autentica diante de um retorno explícito de sucesso com os dados
-    do cliente. Erros técnicos (ex: parâmetro ausente) não autenticam nem contam tentativa.
+    do cliente. Erros técnicos não autenticam nem contam tentativa.
     """
-    payload = _decodificar_resposta_tool(response) or {}
     cliente = payload.get("cliente")
 
     if payload.get("autenticado") is True and isinstance(cliente, dict) and cliente.get("cpf"):
         ctx.state[AUTH_TENTATIVAS_KEY] = 0
         ctx.state["is_authenticated"] = True
-        # Minimização de PII: a data de nascimento (credencial) não fica no estado nem nos prompts
+        # Minimização de PII: a data de nascimento (credencial) não fica no estado.
+        # O CPF fica só em CLIENTE_KEY (usado pelas tools); os prompts recebem apenas "nome".
         ctx.state[CLIENTE_KEY] = {k: cliente.get(k) for k in ("cpf", "nome", "conta")}
-        ctx.state[AUTH_CPF_TEMP_KEY] = None
-        ctx.state["auth_data_temp"] = None
+        ctx.state["nome"] = cliente.get("nome")
         ctx.state[CONVERSATION_STATE_KEY] = BankingConversationState.AUTENTICADO.value
-        return None
+        return _construir_resposta(BankingPresenter.autenticacao_sucesso(cliente.get("nome") or ""))
 
     ctx.state["is_authenticated"] = False
     ctx.state[CLIENTE_KEY] = None
 
     if payload.get("erro") != "credenciais_invalidas":
-        logger.error("Retorno inesperado de autenticar_cliente; autenticação negada | payload=%s", str(payload)[:200])
+        logger.error("Falha técnica na autenticação; autenticação negada | erro=%s", payload.get("erro"))
         ctx.state[CONVERSATION_STATE_KEY] = BankingConversationState.AGUARDANDO_CPF
         return _construir_resposta(BankingPresenter.autenticacao_erro_tecnico())
 
@@ -241,21 +241,16 @@ async def before_model_callback(
     if ENTREVISTA_REALIZADA_KEY not in callback_context.state:
         callback_context.state[ENTREVISTA_REALIZADA_KEY] = False
 
-    # Intercepta o resultado da ferramenta de autenticação para um controle determinístico
+    # O texto original fica só em memória para a máquina de estados; tudo o que segue
+    # para a LLM (agente e classificador semântico) sai com CPF/datas mascarados.
+    texto_usuario = _extrair_texto_usuario(llm_request)
+    _mascarar_pii_no_request(llm_request)
+
     last_content = llm_request.contents[-1] if llm_request.contents else None
-    ultimo_e_resposta_de_tool = bool(
-        last_content
-        and last_content.parts
-        and any(getattr(p, "function_response", None) for p in last_content.parts)
-    )
-    if ultimo_e_resposta_de_tool:
-        for part in last_content.parts:
-            if part.function_response and part.function_response.name == "autenticar_cliente":
-                return _tratar_resultado_autenticacao(callback_context, part.function_response.response)
+    if last_content and last_content.parts and any(getattr(p, "function_response", None) for p in last_content.parts):
         # Chamada de modelo pós-tool: a mensagem do usuário já foi validada neste turno
         return None
 
-    texto_usuario = _extrair_texto_usuario(llm_request)
     if not texto_usuario:
         return None
 
@@ -266,7 +261,7 @@ async def before_model_callback(
         return _construir_resposta("⚠️ Atividade suspeita detectada. Por motivos de segurança, este atendimento será encerrado.")
 
     # Guardrail Semântico
-    eh_seguro = await _validar_input_semantico(texto_usuario)
+    eh_seguro = await _validar_input_semantico(_mascarar_pii(texto_usuario))
     if not eh_seguro:
         logger.warning("Tentativa de prompt injection detectada (Semântico) | texto=%s", texto_usuario[:80])
         _limpar_estado(callback_context)
@@ -290,6 +285,6 @@ async def before_model_callback(
         return _tratar_aguardando_cpf(callback_context, texto_usuario, llm_request)
 
     if estado == BankingConversationState.AGUARDANDO_DATA_NASCIMENTO:
-        return _tratar_aguardando_data_nascimento(callback_context, texto_usuario, llm_request)
+        return _tratar_aguardando_data_nascimento(callback_context, texto_usuario)
 
     return None

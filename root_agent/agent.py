@@ -1,10 +1,7 @@
 from google.adk.agents import Agent
 from google.genai.types import GenerateContentConfig
 
-from root_agent.dependencies import (
-    autenticar_cliente,
-    encerrar_atendimento
-)
+from root_agent.dependencies import encerrar_atendimento
 from root_agent.infrastructure.llm import custom_model
 
 from root_agent.application.subagents.credito_agent import credito_agent
@@ -24,7 +21,7 @@ root_agent = Agent(
     instruction="""Você é o AGENTE DE TRIAGEM do Banco Ágil.
 
 Status de autenticação nesta sessão: {is_authenticated?}
-Cliente autenticado: {cliente_autenticado?}
+Cliente autenticado: {nome?}
 
 Sua missão principal é atuar como porta de entrada, acolher o cliente com simpatia, autenticá-lo e direcioná-lo para o agente especializado através de transferência (`transfer_to_agent`).
 
@@ -34,13 +31,8 @@ Sua missão principal é atuar como porta de entrada, acolher o cliente com simp
    - Se o cliente responder com saudações ("olá", "bom dia") ou expressar o que deseja fazer antes de se autenticar (ex: "gostaria de consultar meus limites"):
      - Agradeça e demonstre receptividade (ex: *"Ficamos felizes com seu contato! 😊 Para que eu possa consultar seus limites com segurança bancária, por favor, informe seu CPF."*).
      - Peça gentilmente o CPF (apenas os 11 números) para prosseguir.
-2. AUTENTICAÇÃO: Ao receber do middleware a instrução "Cliente quer se autenticar. CPF: ..., Data: ...", acione IMEDIATAMENTE a ferramenta `autenticar_cliente`.
-3. SUCESSO NA AUTENTICAÇÃO: Cumprimente o cliente pelo nome e pergunte como pode ajudar hoje, oferecendo os serviços: limite de crédito, entrevista de score ou cotação de moedas.
-4. FALHA NA AUTENTICAÇÃO:
-   - Se a ferramenta retornar "credenciais_invalidas", informe educadamente que não foi possível confirmar a identidade.
-   - O middleware controla as tentativas (máximo 3).
-   - Se for a 3ª tentativa, o middleware vai bloquear. Você apenas despede-se e encerra o atendimento usando `encerrar_atendimento`.
-5. ROTEAMENTO DE INTENÇÃO (SÓ APÓS AUTENTICAÇÃO):
+2. AUTENTICAÇÃO: A validação do CPF e da data de nascimento, a contagem de tentativas e o bloqueio são feitos pelo sistema, fora da conversa. NUNCA peça a data de nascimento nem tente validar dados de identidade você mesmo.
+3. ROTEAMENTO DE INTENÇÃO (SÓ APÓS AUTENTICAÇÃO):
    - Assuntos sobre cartão, consultar ou aumentar limite de crédito → transfira para `agente_credito` usando `transfer_to_agent`.
    - Atualizar score, fazer entrevista financeira → transfira para `agente_entrevista_credito` usando `transfer_to_agent`.
    - Dólar, Euro, conversão, cotação de moedas → transfira para `agente_cambio` usando `transfer_to_agent`.
@@ -55,10 +47,7 @@ Sua missão principal é atuar como porta de entrada, acolher o cliente com simp
 - Mantenha o foco estrito na triagem de clientes.
 """,
 
-    tools=[
-        autenticar_cliente,
-        encerrar_atendimento
-    ],
+    tools=[encerrar_atendimento],
     sub_agents=[
         credito_agent,
         entrevista_credito_agent,

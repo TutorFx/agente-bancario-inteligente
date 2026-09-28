@@ -11,8 +11,8 @@ logger = get_logger("middleware.auth_guard")
 
 IS_AUTHENTICATED_KEY = "is_authenticated"
 
-# Tools que podem rodar sem cliente autenticado (a própria autenticação e o encerramento)
-TOOLS_PUBLICAS = frozenset({"autenticar_cliente", "encerrar_atendimento", "transfer_to_agent"})
+# Tools que podem rodar sem cliente autenticado (a autenticação é feita pelo input_middleware)
+TOOLS_PUBLICAS = frozenset({"encerrar_atendimento", "transfer_to_agent"})
 
 ERRO_NAO_AUTENTICADO = {
     "erro": "nao_autenticado",
