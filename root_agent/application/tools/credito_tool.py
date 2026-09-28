@@ -23,7 +23,7 @@ def get_credito_tools(adapter: BancoAgilAdapter):
     def solicitar_aumento_limite(novo_limite: float, tool_context: ToolContext = None) -> str:
         """
         Processa a solicitação de aumento de limite do cliente autenticado na sessão,
-        consultando a política dinâmica de crédito e persistindo log de auditoria.
+        validando o valor pela tabela de faixas de score e registrando a solicitação.
 
         Parâmetros:
             novo_limite: Novo limite de crédito desejado, em R$.
@@ -59,8 +59,8 @@ def get_credito_tools(adapter: BancoAgilAdapter):
     ) -> str:
         """
         Calcula o novo score de crédito do cliente autenticado com base nos dados
-        coletados na entrevista, utilizando a fórmula calibrada de risco por categoria
-        com tetos estritos, e persiste o resultado no banco de dados (clientes.csv).
+        coletados na entrevista, usando a fórmula ponderada por categoria
+        (cada uma com teto próprio), e persiste o resultado no banco de dados (clientes.csv).
 
         Parâmetros:
             renda_mensal: Renda mensal bruta em R$.

@@ -4,7 +4,7 @@
 class CPF:
     """
     Objeto de Valor que encapsula um Cadastro de Pessoas Físicas (CPF).
-    Garante imutabilidade e validações intrínsecas ao dado.
+    Não expõe setter para o valor e concentra as validações de formato.
     """
 
     def __init__(self, valor: str):

@@ -53,7 +53,7 @@ async def test_consultar_cotacao_servico_indisponivel():
 
 @pytest.mark.asyncio
 async def test_consultar_cotacao_moeda_indisponivel_no_provedor():
-    """Requisição bem-sucedida, mas o provedor não retornou taxa para a moeda —
+    """Requisição bem-sucedida, mas o provedor não retornou taxa para a moeda:
     não deve ser confundido com falha geral de serviço."""
     mock_adapter = MagicMock(spec=BancoAgilAdapter)
     mock_adapter.get_cotacao = AsyncMock(return_value=CotacaoDTO(

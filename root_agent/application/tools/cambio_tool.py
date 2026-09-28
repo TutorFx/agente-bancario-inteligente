@@ -6,7 +6,7 @@ def get_cambio_tool(adapter: BancoAgilAdapter):
     async def consultar_cotacao(moeda_destino: str) -> str:
         """
         Busca cotação de referência via API externa (BRL → moeda_destino).
-        O provedor atualiza a taxa uma vez por dia — não é cotação em tempo real.
+        O provedor atualiza a taxa uma vez por dia; não é cotação em tempo real.
         Valida se moeda está na lista suportada antes de chamar API.
         """
         if not validar_moeda(moeda_destino):

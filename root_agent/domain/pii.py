@@ -1,8 +1,8 @@
 """
 Mascaramento de credenciais de login (CPF e data de nascimento) em texto livre.
 
-Cobre todo formato que o login aceita — o CPF é qualquer mensagem com 11 dígitos
-(`guardrails.validar_formato_cpf` ignora espaços, pontos, traços e barras) — e as formas
+Cobre todo formato que o login aceita (o CPF é qualquer mensagem com 11 dígitos, pois
+`guardrails.validar_formato_cpf` ignora espaços, pontos, traços e barras) e as formas
 comuns de escrever datas. Valores monetários da entrevista de crédito (ex: "R$ 8.000,00",
 "8000") não são mascarados, para não esconder dos agentes as respostas do cliente.
 """

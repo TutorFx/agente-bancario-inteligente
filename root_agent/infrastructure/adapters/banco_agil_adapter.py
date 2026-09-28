@@ -76,7 +76,7 @@ class BancoAgilAdapter:
         return regras
 
     def obter_limite_maximo_por_score(self, score: int) -> float:
-        """Busca o limite máximo permitido com base na tabela dinâmica score_limite.csv."""
+        """Busca o limite máximo permitido com base na tabela score_limite.csv."""
         regras = self._carregar_regras_score()
         for r in regras:
             if r.score_min <= score <= r.score_max:
@@ -122,7 +122,7 @@ class BancoAgilAdapter:
             if limpar_cpf(row["cpf"]) == cpf_limpo and row["data_nascimento"] == data_nascimento:
                 logger.info("Autenticação bem-sucedida | cpf_masked=%s", cpf_masked)
                 return ClienteDTO(**row)
-        logger.warning("Autenticação falhou — credenciais não encontradas | cpf_masked=%s", cpf_masked)
+        logger.warning("Autenticação falhou: credenciais não encontradas | cpf_masked=%s", cpf_masked)
         return None
 
     def buscar_cliente(self, cpf: str) -> ClienteDTO | None:
@@ -219,9 +219,9 @@ class BancoAgilAdapter:
         Chama API externa e retorna a cotação invertida:
         quanto custa 1 unidade da moeda_destino em BRL.
         A API retorna BRL→X, então invertemos para X→BRL.
-        A cotação é de referência — a API atualiza `time_last_update_utc` uma vez por
+        A cotação é de referência: a API atualiza `time_last_update_utc` uma vez por
         dia, não em tempo real; o timestamp é repassado ao cliente sem alteração.
-        Trata graciosamente erros de rede, timeout, HTTP status e ausência da moeda
+        Trata erros de rede, timeout, HTTP status e ausência da moeda
         na resposta do provedor, sem propagar exceção. O motivo da indisponibilidade
         (moeda ausente no provedor vs. falha de rede/HTTP) é distinguido em `erro`.
         """
@@ -245,7 +245,7 @@ class BancoAgilAdapter:
                         timestamp=timestamp
                     )
                 # Requisição bem-sucedida, mas o provedor não retornou taxa para esta
-                # moeda (ex: removida temporariamente do feed) — não é falha de rede.
+                # moeda (ex: removida temporariamente do feed); não é falha de rede.
                 logger.warning("Taxa não encontrada ou zero para moeda=%s", moeda)
                 return CotacaoDTO(
                     moeda_origem="BRL",

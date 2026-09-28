@@ -178,8 +178,8 @@ async def after_model_callback(
     transições de estado baseadas no texto gerado pela LLM (quando o agente
     pede CPF ou data de nascimento).
 
-    NOTA: O controle de tentativas de autenticação é gerenciado
-    EXCLUSIVAMENTE pelo input_middleware (que autentica direto no adapter). Não duplicar essa lógica aqui.
+    NOTA: O controle de tentativas de autenticação fica
+    só no input_middleware (que autentica direto no adapter). Não duplicar essa lógica aqui.
     """
     # Persona unificada: remove anúncios de transferência antes do guardrail, para que
     # um "transfer_to_agent(...)" vazado no texto não derrube a resposta inteira.

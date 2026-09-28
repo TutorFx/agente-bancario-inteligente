@@ -125,8 +125,8 @@ def test_calcular_e_atualizar_score(tools, mock_adapter):
 
 def test_calcular_e_atualizar_score_alta_renda_com_dividas_e_desemprego(tools, mock_adapter):
     """
-    Valida a robustez matemática: alta renda com despesas baixas não deve estourar
-    a pontuação para 1000 se o cliente estiver desempregado e possuir dívidas ativas.
+    Alta renda com despesas baixas não deve levar a pontuação a 1000
+    se o cliente estiver desempregado e possuir dívidas ativas.
     """
     _, _, calcular_score = tools
     mock_adapter.atualizar_score.return_value = True
