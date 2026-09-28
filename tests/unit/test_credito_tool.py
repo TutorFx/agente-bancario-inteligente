@@ -38,7 +38,7 @@ def cliente():
     )
 
 def test_consultar_limite_credito_sucesso(tools, mock_adapter, cliente):
-    consultar_limite, _, _, _ = tools
+    consultar_limite, _, _ = tools
     mock_adapter.buscar_cliente.return_value = cliente
 
     resp = json.loads(consultar_limite(tool_context=_ctx()))
@@ -51,14 +51,14 @@ def test_consultar_limite_credito_sucesso(tools, mock_adapter, cliente):
     assert "cpf" not in resp
 
 def test_consultar_limite_credito_nao_encontrado(tools, mock_adapter):
-    consultar_limite, _, _, _ = tools
+    consultar_limite, _, _ = tools
     mock_adapter.buscar_cliente.return_value = None
 
     resp = json.loads(consultar_limite(tool_context=_ctx(cpf="00000000000")))
     assert resp["erro"] == "cliente_nao_encontrado"
 
 def test_solicitar_aumento_limite_aprovado(tools, mock_adapter, cliente):
-    _, solicitar_aumento, _, _ = tools
+    _, solicitar_aumento, _ = tools
     mock_adapter.buscar_cliente.return_value = cliente
     mock_adapter.solicitar_aumento_limite.return_value = SolicitacaoLimiteDTO(
         aprovado=True,
@@ -76,7 +76,7 @@ def test_solicitar_aumento_limite_aprovado(tools, mock_adapter, cliente):
     assert resp["score_atual"] == 800
 
 def test_solicitar_aumento_limite_rejeitado(tools, mock_adapter):
-    _, solicitar_aumento, _, _ = tools
+    _, solicitar_aumento, _ = tools
     mock_adapter.buscar_cliente.return_value = ClienteDTO(
         cpf="12345678900",
         nome="Teste Cliente",
@@ -100,7 +100,7 @@ def test_solicitar_aumento_limite_rejeitado(tools, mock_adapter):
     assert resp["score_atual"] == 600
 
 def test_calcular_e_atualizar_score(tools, mock_adapter):
-    _, _, _, calcular_score = tools
+    _, _, calcular_score = tools
     mock_adapter.atualizar_score.return_value = True
     ctx = _ctx()
 
@@ -128,7 +128,7 @@ def test_calcular_e_atualizar_score_alta_renda_com_dividas_e_desemprego(tools, m
     Valida a robustez matemática: alta renda com despesas baixas não deve estourar
     a pontuação para 1000 se o cliente estiver desempregado e possuir dívidas ativas.
     """
-    _, _, _, calcular_score = tools
+    _, _, calcular_score = tools
     mock_adapter.atualizar_score.return_value = True
 
     resp = json.loads(calcular_score(
@@ -156,19 +156,19 @@ class TestControleDeAcesso:
             assert "cpf" not in inspect.signature(tool).parameters
 
     def test_consultar_limite_sem_autenticacao_e_negado(self, tools, mock_adapter):
-        consultar_limite, _, _, _ = tools
+        consultar_limite, _, _ = tools
         resp = json.loads(consultar_limite(tool_context=_ctx(autenticado=False)))
         assert resp["erro"] == "nao_autenticado"
         mock_adapter.buscar_cliente.assert_not_called()
 
     def test_solicitar_aumento_sem_autenticacao_e_negado(self, tools, mock_adapter):
-        _, solicitar_aumento, _, _ = tools
+        _, solicitar_aumento, _ = tools
         resp = json.loads(solicitar_aumento(9000.0, tool_context=_ctx(autenticado=False)))
         assert resp["erro"] == "nao_autenticado"
         mock_adapter.solicitar_aumento_limite.assert_not_called()
 
     def test_score_sem_autenticacao_nao_persiste(self, tools, mock_adapter):
-        _, _, _, calcular_score = tools
+        _, _, calcular_score = tools
         resp = json.loads(calcular_score(
             renda_mensal=30000.0, tipo_emprego="formal", despesas_mensais=0.0,
             num_dependentes=0, tem_dividas="nao", tool_context=_ctx(autenticado=False),
@@ -177,7 +177,7 @@ class TestControleDeAcesso:
         mock_adapter.atualizar_score.assert_not_called()
 
     def test_flag_autenticado_sem_cliente_na_sessao_e_negado(self, tools, mock_adapter):
-        consultar_limite, _, _, _ = tools
+        consultar_limite, _, _ = tools
         ctx = MagicMock()
         ctx.state = {"is_authenticated": True, "cliente_autenticado": None}
         resp = json.loads(consultar_limite(tool_context=ctx))

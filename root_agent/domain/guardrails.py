@@ -3,8 +3,6 @@ from datetime import datetime
 
 from root_agent.domain.value_objects import CPF
 
-CPF_RE = re.compile(r'^\d{11}$')
-DATA_RE = re.compile(r'^\d{2}/\d{2}/\d{4}$')
 MOEDAS_SUPORTADAS = {"USD", "EUR", "GBP", "ARS", "JPY", "CHF"}  # códigos com taxa disponível em open.er-api.com/v6/latest/BRL
 MAX_TENTATIVAS_AUTH = 3
 TETO_SCORE_DESEMPREGADO = 600
@@ -133,8 +131,3 @@ def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
 
     return score_final, detalhes
 
-
-def calcular_score(entrevista: dict) -> int:
-    """Calcula o score de crédito consolidado calibrado no intervalo [0, 1000]."""
-    score, _ = calcular_score_detalhado(entrevista)
-    return score

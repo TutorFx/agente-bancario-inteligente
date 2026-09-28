@@ -1,6 +1,5 @@
 python-dotenv==1.2.2
 google-adk==1.33.0
-requests==2.34.1
 httpx==0.28.1
 filelock==4.0.4
 litellm>=1.93.0

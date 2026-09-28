@@ -100,7 +100,7 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
 | Decisão de Arquitetura | Justificativa Técnica / Benefício para o Negócio |
 | :--- | :--- |
 | **Framework Google ADK** | Permite isolar escopos e prompts em subagentes especializados, garantindo determinismo e facilitando a manutenção. |
-| **Cálculo de Score via Tool Python** | Impede que a LLM estime ou invente pontuações de crédito, garantindo determinismo matemático absoluto. |
+| **Cálculo de Score via Tool Python** | Impede que a LLM estime ou invente pontuações de crédito, garantindo determinismo matemático. |
 | **Fórmula de Risco por Categoria** | A aplicação de tetos por componente evita que clientes com rendas muito elevadas neutralizem penalidades relativas a desemprego ou dívidas ativas. |
 | **`FileLock` + Escrita Atômica** | Elimina riscos de corrupção de arquivos planos em execuções concorrentes no Streamlit. |
 | **Painel Lateral de Debug (`st.sidebar`)** | Separa a experiência do cliente (chat limpo) da visão de auditoria do avaliador (exibição do agente ativo e status de autenticação). |
@@ -233,7 +233,7 @@ O projeto tem uma suíte `pytest` dividida em quatro camadas:
 
 | Camada | Pasta | Testes | O que cobre | Dependências externas |
 | :--- | :--- | :---: | :--- | :--- |
-| **Unitária** | `tests/unit/` | 365 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
+| **Unitária** | `tests/unit/` | 367 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
 | **Integração** | `tests/integration/` | 19 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC. Chamadas de guardrail por turno e reset de sessão persistido no `InMemoryRunner` do ADK, com LLMs roteirizadas. API com token, redação de PII e credenciais fora do histórico da sessão | Nenhuma |
 | **E2E** | `tests/e2e/` | 6 | Autenticação, encerramento e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit. As asserções usam sinais determinísticos dos eventos do `/run` (agente, transferências, tools, `stateDelta`), não o texto livre da LLM. Sem chave de API, os testes com LLM são pulados | Internet + `GEMINI_API_KEY` |
 | **Avaliação (evals)** | `tests/evals/` | 53 cenários | Comportamento dos agentes com a LLM real: roteamento, tools e argumentos, estado final, dados persistidos e LLM como juiz. Fica fora do `pytest` padrão (ver [seção 7](#-7-avaliação-de-agentes-evals)) | Internet + `GEMINI_API_KEY` + `deepeval` |
@@ -256,7 +256,7 @@ pytest
 
 > ⚠️ **Anotação Importante sobre a Suíte Completa:**
 > * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
-> * **Tempo de Execução:** os 390 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
+> * **Tempo de Execução:** os 392 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
 > * **Não determinismo:** os E2E que dependem de uma decisão da LLM repetem a conversa inteira uma vez (com aviso) antes de falhar; invariantes garantidas pelo código falham na hora.
 > * **Cobertura:** ~97% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 

@@ -80,7 +80,7 @@ def tools(arquivos):
         clientes_lock_path=str(arquivos.tmp / ".clientes.lock"),
         solicitacoes_lock_path=str(arquivos.tmp / ".solicitacoes.lock"),
     )
-    consultar, solicitar, _, calcular = get_credito_tools(adapter)
+    consultar, solicitar, calcular = get_credito_tools(adapter)
     return SimpleNamespace(consultar=consultar, solicitar=solicitar, calcular=calcular)
 
 

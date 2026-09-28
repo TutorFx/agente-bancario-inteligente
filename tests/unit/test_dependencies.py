@@ -1,4 +1,3 @@
-import pytest
 from root_agent.dependencies import get_banco_agil_adapter
 
 def test_lazy_loading_adapter():

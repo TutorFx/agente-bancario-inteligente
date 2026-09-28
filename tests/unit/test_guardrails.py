@@ -8,7 +8,6 @@ from root_agent.domain.guardrails import (
     extrair_data,
     validar_moeda,
     validar_aumento_limite,
-    calcular_score,
     calcular_score_detalhado,
     TETO_SCORE_DESEMPREGADO,
 )
@@ -101,7 +100,6 @@ def test_calcular_score_perfil_maximo():
     assert detalhes["parcela_comprometimento"] == 200
     assert detalhes["parcela_dependentes"] == 150
     assert detalhes["parcela_dividas"] == 150
-    assert calcular_score(entrevista) == 1000
 
 def test_calcular_score_autonomo_e_dependentes():
     entrevista = {
@@ -124,7 +122,6 @@ def test_calcular_score_autonomo_e_dependentes():
     assert detalhes["parcela_comprometimento"] == 100
     assert detalhes["parcela_dependentes"] == 90
     assert detalhes["parcela_dividas"] == 150
-    assert calcular_score(entrevista) == 590
 
 def test_calcular_score_desempregado_com_dividas():
     entrevista = {

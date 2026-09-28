@@ -8,8 +8,6 @@ from google.genai import types
 from root_agent.application.middlewares.output_middleware import (
     after_model_callback,
     _extrair_texto_resposta,
-    _aguardando_cpf,
-    _aguardando_data_nascimento,
 )
 from root_agent.domain.conversation_state import (
     BankingConversationState,
