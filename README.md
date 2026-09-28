@@ -14,7 +14,7 @@ O projeto demonstra a aplicação prática de **Sistemas Multi-Agente (MAS)** no
 * 🤖 **Agente de Triagem (Host/Orquestrador):** Receptáculo primário da sessão. Realiza a saudação, coleta e validação de credenciais (CPF e Data de Nascimento) contra o cadastro em `clientes.csv`, sanitizando entradas e encerrando/reiniciando a sessão na 3ª falha consecutiva.
 * 💳 **Agente de Crédito:** Responsável por consultar limites atuais, processar solicitações de alteração de limite e validar o teto permitido via matriz de risco dinâmica (`data/score_limite.csv`).
 * 🗣️ **Agente de Entrevista de Crédito:** Conduz uma entrevista financeira estruturada em 5 perguntas (Renda, Emprego, Despesas, Dependentes e Dívidas), aciona o motor determinístico de cálculo de score via Tool Python e persiste a pontuação atualizada.
-* 💱 **Agente de Câmbio:** Consulta cotações de moedas em tempo real consumindo API financeira ao vivo via chamadas assíncronas com tratamento de timeout e guardrails de pré-validação de moedas.
+* 💱 **Agente de Câmbio:** Consulta cotações de referência de moedas estrangeiras (o provedor atualiza uma vez por dia) via chamadas assíncronas, com tratamento de timeout e guardrails de pré-validação de moedas.
 
 ---
 
@@ -74,9 +74,9 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
 - [x] **Matriz Dinâmica de Crédito:** Concessão parametrizada via `score_limite.csv` por faixas de pontuação, eliminando condicionais fixas (*hardcoded*). *Testes:* `tests/integration/test_credito_adapter_integration.py`.
 - [x] **Modelo Ponderado por Categoria:** Cálculo de score calibrado com tetos individuais por componente (Renda, Emprego, Comprometimento, Dependentes e Dívidas), limitando o intervalo estritamente entre 0 e 1000 pontos. *Testes:* `tests/unit/test_guardrails.py`.
 - [x] **Trilha de Auditoria Regulatória:** Registro append-only de todas as transações de crédito com carimbo de data/hora em ISO 8601 UTC (`data/solicitacoes_aumento_limite.csv`). *Testes:* `tests/integration/test_credito_adapter_integration.py`.
-- [x] **Consultas de Câmbio em Tempo Real:** Chamadas assíncronas (`httpx`) à API do ExchangeRate com guardrails para validação prévia de moedas suportadas. *Testes:* `tests/unit/test_cambio_tool.py` e `tests/unit/test_banco_agil_adapter.py`.
+- [x] **Consultas de Câmbio (Cotação de Referência):** Chamadas assíncronas (`httpx`) à API do ExchangeRate, que atualiza as taxas uma vez por dia (a resposta informa a data da cotação). Guardrails validam a moeda antes da chamada (USD, EUR, GBP, ARS, JPY e CHF, todas presentes no provedor), e o cliente recebe mensagens distintas para "moeda indisponível no provedor" e "falha de rede/timeout". *Testes:* `tests/unit/test_cambio_tool.py` e `tests/unit/test_banco_agil_adapter.py`.
 - [x] **Transição Implícita de Agentes:** Roteamento transparente no Google ADK, acompanhado por um painel lateral de telemetria para o avaliador no Streamlit (`st.sidebar` em `streamlit_app.py`).
-- [x] **Reset de Sessão & Proteção PII:** Limpeza completa do estado e expurgamento de chaves no encerramento ("tchau"), com mensagens de erro que utilizam exemplos estáticos (`BankingPresenter`) para evitar vazamento de dados de clientes. *Testes:* `tests/unit/test_session_tool.py` e `tests/unit/test_banking_presenter.py`.
+- [x] **Reset de Sessão & Proteção PII:** Limpeza do estado no encerramento ("tchau"), no bloqueio após 3 tentativas e em `ATAQUE`, gravada no `state_delta` do evento e persistida pelo SessionService (a lista de chaves fica centralizada em `ESTADO_SEM_AUTENTICACAO`). Mensagens de erro usam exemplos estáticos (`BankingPresenter`) para evitar vazamento de dados de clientes. *Testes:* `tests/unit/test_session_tool.py`, `tests/integration/test_reset_sessao_persistido.py` e `tests/unit/test_banking_presenter.py`.
 
 ---
 
@@ -91,7 +91,7 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
    * *Solução:* Implementação de `FileLock` e gravação em arquivo temporário com substituição atômica (`os.replace`). *Testes:* escrita atômica e concorrência com `ThreadPoolExecutor` em `tests/unit/test_banco_agil_adapter.py`.
 3. **Persistência de Sessão Pós-Despedida:**
    * *Desafio:* Enviar mensagens de encerramento mantinha o estado autenticado ativo para perguntas subsequentes.
-   * *Solução:* Criação do mecanismo de reset síncrono que expurga as chaves de autenticação do `tool_context.state` (`session_tool.py`) e gera novo ID de sessão no Streamlit (`streamlit_app.py`). *Testes:* `tests/unit/test_session_tool.py`.
+   * *Solução:* O reset grava `None` nas chaves de autenticação pela API pública do `State` (`resetar_autenticacao` em `conversation_state.py`). O ADK não apaga chaves do estado: o `state_delta` só sobrescreve, então `None` é o que limpa um valor. Uma versão anterior removia as chaves do `_delta` interno e o CPF continuava gravado no backend; os testes com `MagicMock` não pegavam o problema. O Streamlit também gera um novo ID de sessão. *Testes:* `tests/unit/test_session_tool.py` e `tests/integration/test_reset_sessao_persistido.py`, com `InMemorySessionService`, `InMemoryRunner` e leitura do estado persistido.
 
 ---
 
@@ -126,10 +126,14 @@ O sistema adota o padrão de segurança corporativo de Defesa em Profundidade pa
 
 ### 🔐 Autorização Determinística (não depende do prompt)
 1. **Identidade só pela sessão (anti-IDOR):** as tools de crédito e score não recebem CPF da LLM; o cliente é resolvido exclusivamente a partir de `cliente_autenticado` no estado da sessão (`auth_guard.cpf_do_cliente_autenticado`).
-2. **`before_tool_callback` nos subagentes:** qualquer tool de negócio (crédito, score, câmbio) é bloqueada enquanto `is_authenticated` não for `True`, mesmo que a LLM seja induzida a transferir o cliente.
+2. **`before_tool_callback` na triagem e nos subagentes:** qualquer tool de negócio (crédito, score, câmbio) é bloqueada enquanto `is_authenticated` não for `True`. Na triagem, o mesmo guard barra `transfer_to_agent` para os agentes especializados antes do login (só `agente_fora_escopo` fica liberado): com o histórico de um login anterior, a LLM chegava a transferir após o "tchau" mesmo com o prompt proibindo.
 3. **Autenticação determinística e *fail-closed*:** o `input_middleware` valida CPF + data de nascimento direto no `BancoAgilAdapter`, sem passar pela LLM. O login só é concedido diante de um retorno explícito de sucesso; erros técnicos não autenticam nem consomem tentativas.
 4. **Estado protegido na API:** o `ProtectedStateMiddleware` rejeita (403) requisições que tentem definir chaves de autenticação via `state`/`stateDelta` nos endpoints REST do ADK.
-5. **Minimização de PII:** CPF e data de nascimento nunca chegam ao provedor da LLM. A autenticação não usa tool, os prompts de sistema recebem apenas o nome do cliente, e CPFs/datas no histórico são mascarados antes de cada chamada (agentes e classificador semântico). As credenciais temporárias saem do estado logo após a validação, e a data de nascimento nunca é persistida.
+5. **Minimização de PII:** CPF e data de nascimento não chegam ao provedor da LLM. A autenticação não usa tool, os prompts de sistema recebem apenas o nome do cliente, e CPFs/datas no histórico são mascarados antes de cada chamada (agentes e classificador semântico). A máscara (`root_agent/domain/pii.py`) cobre todo formato de CPF aceito pelo login (com pontos, traços, barras ou espaços) e datas numéricas, ISO e por extenso ("15 de março de 1985"), sem mascarar valores em reais. O `MascaramentoCredenciaisPlugin` mascara a mensagem antes de o Runner gravá-la no histórico da sessão; o texto digitado fica só em memória (`temp:`) durante o turno. A data de nascimento nunca é persistida.
+6. **API fechada por padrão:** a API REST do ADK não tem autenticação própria. Com `BANCO_AGIL_API_TOKEN` definido, toda rota (exceto `/health`) exige `Authorization: Bearer <token>`; sem ele, só conexões locais (loopback) são aceitas. As respostas de sessão e de execução saem sem CPF e data de nascimento (`RedacaoPiiMiddleware`), e o Streamlit gera um `user_id` aleatório por sessão do navegador.
+7. **Dev UI do ADK opcional:** `/dev-ui` só é servida com `BANCO_AGIL_DEV_UI=true`.
+
+> ⚠️ **Limite conhecido:** o CPF (só dígitos) continua no estado da sessão em `root_agent/.adk/session.db` enquanto o cliente está autenticado e no histórico de eventos depois disso, porque as tools resolvem o cliente por ele. A API não o expõe, mas quem tiver acesso ao arquivo consegue lê-lo. Em produção, o próximo passo seria cifrar esse valor ou trocá-lo por uma referência opaca.
 
 ---
 
@@ -184,6 +188,7 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
    GEMINI_API_KEY=sua_chave_gemini_aqui
    ```
    > As variáveis opcionais `LLM_MODEL_NAME`, `LLM_BASE_URL` e `LLM_API_KEY` permitem trocar o modelo/provedor via LiteLLM (padrão: `gemini/gemini-2.5-flash`).
+   > Para acessar a API de outra máquina ou container, defina `BANCO_AGIL_API_TOKEN` no `.env` (o Streamlit envia o mesmo valor). `BANCO_AGIL_DEV_UI=true` liga a interface de desenvolvimento do ADK em `/dev-ui`.
    > 💡 **Dica (Windows):** Ao criar o arquivo pelo Bloco de Notas, certifique-se de salvar como `Todos os arquivos (*.*)` com o nome `.env`, para evitar que seja salvo incorretamente como `.env.txt`.
 
 5. **Iniciar o Servidor Backend (API / Google ADK):**
@@ -228,10 +233,10 @@ O projeto tem uma suíte `pytest` dividida em quatro camadas:
 
 | Camada | Pasta | Testes | O que cobre | Dependências externas |
 | :--- | :--- | :---: | :--- | :--- |
-| **Unitária** | `tests/unit/` | 233 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
-| **Integração** | `tests/integration/` | 8 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC. Chamadas de guardrail por turno no `InMemoryRunner` do ADK, com LLMs roteirizadas | Nenhuma |
-| **E2E** | `tests/e2e/` | 6 | Autenticação e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit | Internet + `GEMINI_API_KEY` |
-| **Avaliação (evals)** | `tests/evals/` | 52 cenários | Comportamento dos agentes com a LLM real: roteamento, tools e argumentos, estado final, dados persistidos e LLM como juiz. Fica fora do `pytest` padrão (ver [seção 7](#-7-avaliação-de-agentes-evals)) | Internet + `GEMINI_API_KEY` + `deepeval` |
+| **Unitária** | `tests/unit/` | 365 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
+| **Integração** | `tests/integration/` | 19 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC. Chamadas de guardrail por turno e reset de sessão persistido no `InMemoryRunner` do ADK, com LLMs roteirizadas. API com token, redação de PII e credenciais fora do histórico da sessão | Nenhuma |
+| **E2E** | `tests/e2e/` | 6 | Autenticação, encerramento e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit. As asserções usam sinais determinísticos dos eventos do `/run` (agente, transferências, tools, `stateDelta`), não o texto livre da LLM. Sem chave de API, os testes com LLM são pulados | Internet + `GEMINI_API_KEY` |
+| **Avaliação (evals)** | `tests/evals/` | 53 cenários | Comportamento dos agentes com a LLM real: roteamento, tools e argumentos, estado final, dados persistidos e LLM como juiz. Fica fora do `pytest` padrão (ver [seção 7](#-7-avaliação-de-agentes-evals)) | Internet + `GEMINI_API_KEY` + `deepeval` |
 
 > Números de `pytest --collect-only -q` (e de `pytest -m eval --collect-only -q` para os evals). Após alterar a suíte, atualize a tabela com essa saída.
 
@@ -251,11 +256,12 @@ pytest
 
 > ⚠️ **Anotação Importante sobre a Suíte Completa:**
 > * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
-> * **Tempo de Execução:** os 247 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
-> * **Cobertura:** ~95% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
+> * **Tempo de Execução:** os 390 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
+> * **Não determinismo:** os E2E que dependem de uma decisão da LLM repetem a conversa inteira uma vez (com aviso) antes de falhar; invariantes garantidas pelo código falham na hora.
+> * **Cobertura:** ~97% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 
 #### 3. Execução Rápida (Unitários + Integração, 100% Determinísticos)
-Para validar lógica de negócio, middlewares, presenters, guardrails e adapter em ~1 segundo, sem internet nem chave de LLM:
+Para validar lógica de negócio, middlewares, presenters, guardrails e adapter em ~2 segundos, sem internet nem chave de LLM:
 
 ```bash
 pytest tests/unit/ tests/integration/
@@ -269,7 +275,7 @@ pytest tests/unit/ tests/integration/
 A cobertura de linhas mede o código Python, não o comportamento da LLM. A suíte em [`tests/evals/`](tests/evals/) mede, com a LLM real, se os agentes **roteiam para o agente certo, chamam as tools certas com os argumentos certos, deixam o estado correto e respondem sem expor a arquitetura interna**.
 
 ### Como funciona
-* **Dataset** ([`tests/evals/dataset.yaml`](tests/evals/dataset.yaml)): 52 conversas roteirizadas em 9 categorias: roteamento por intenção, autenticação, recusa de aumento com oferta de entrevista, entrevista completa, correção de dado, câmbio (inclusive moeda inválida), tentativa de IDOR, jailbreak e encerramento ("tchau"). Cada turno declara o agente esperado, as tools com seus argumentos e padrões que a resposta deve ou não conter.
+* **Dataset** ([`tests/evals/dataset.yaml`](tests/evals/dataset.yaml)): 53 conversas roteirizadas em 9 categorias: roteamento por intenção, autenticação, recusa de aumento com oferta de entrevista, entrevista completa, correção de dado, câmbio (inclusive moeda inválida), tentativa de IDOR, jailbreak e encerramento ("tchau"). Cada turno declara o agente esperado, as tools com seus argumentos e padrões que a resposta deve ou não conter.
 * **Execução isolada** ([`harness.py`](tests/evals/harness.py)): cada conversa roda em processo no `InMemoryRunner` do ADK, sobre uma cópia temporária de `data/` e com cotações fixas no lugar da API de câmbio. Nos cenários autenticados, o login passa pelo fluxo real (CPF e data de nascimento), que não chama a LLM.
 * **Métricas determinísticas** ([`checks.py`](tests/evals/checks.py)), extraídas dos eventos do ADK:
   * `roteamento`: agente que respondeu (`author`) e transferências (`transfer_to_agent`);
@@ -286,10 +292,32 @@ Os evals ficam fora do `pytest` padrão (marcador `eval` em `pytest.ini`) porque
 
 ```bash
 pip install "deepeval>=4.0.6"   # juiz (DeepEval); o PyYAML já vem com o google-adk
-pytest -m eval                  # 52 cenários × 3 execuções
+pytest -m eval                  # 53 cenários × 3 execuções
 EVAL_RUNS=1 pytest -m eval      # uma execução por cenário
 EVAL_JUDGE=0 pytest -m eval     # só métricas determinísticas, sem LLM juiz
 pytest -m eval -k cambio        # filtra cenários pelo id
 ```
 
-O terminal mostra as taxas de acerto por categoria e por métrica. O relatório completo, com a taxa por cenário e as verificações que falharam, é gravado em `tests/evals/reports/latest.md`; as transcrições ficam em `latest.json`.
+O terminal mostra as taxas de acerto por categoria e por métrica. O relatório completo, com a taxa por cenário e as verificações que falharam, é gravado em `tests/evals/reports/latest.md`; as transcrições ficam em `latest.json` (ambos fora do git). Uma execução completa também reescreve o resumo publicado em [`tests/evals/results/RESULTS.md`](tests/evals/results/RESULTS.md) (`EVAL_PUBLICAR=1` força numa execução parcial).
+
+As conversas rodam em série. Erros do provedor (429, timeout, 5xx) refazem a conversa inteira com espera crescente e são contabilizados à parte, sem virar falha de comportamento. Ajustes: `EVAL_PAUSA_SEGUNDOS` (ritmo para cotas baixas), `EVAL_TIMEOUT_CONVERSA`, `EVAL_TENTATIVAS`, `EVAL_ESPERA_RATE_LIMIT` e `EVAL_TIMEOUT_JUIZ`.
+
+### Resultados da última execução
+
+Execução completa em 28/09/2026 com `gemini/gemini-2.5-flash`, `EVAL_RUNS=1` e LLM como juiz: **44 de 53 conversas aprovadas (83%)**, em 15 minutos, com 399 chamadas à LLM e nenhum incidente de infraestrutura. Números completos em [`RESULTS.md`](tests/evals/results/RESULTS.md).
+
+| Categoria | Acerto | Limiar |
+| :--- | ---: | ---: |
+| Autenticação, câmbio, correção de dado, entrevista, jailbreak, recusa com oferta de entrevista | 100% | 80–90% |
+| Encerramento ("tchau") | 75% | 80% |
+| IDOR | 60% | 100% |
+| Roteamento | 54% | 95% |
+
+Nas métricas determinísticas, `estado` (100%), `transicao_invisivel` (100%), `ferramentas` (96,8%) e `resposta` (94,2%) ficaram acima do limiar; `roteamento` ficou em 93,2% (limiar 95%).
+
+**Leitura das 9 falhas:**
+* **3 são o problema em aberto:** depois de `transfer_to_agent` para o `agente_credito`, o Gemini às vezes devolve conteúdo vazio e o cliente fica sem resposta no primeiro turno. O mesmo padrão ocorria após `encerrar_atendimento` e foi resolvido com uma despedida determinística; para o crédito, a correção ainda está pendente.
+* **1 é parcial:** na pergunta mista ("meu limite e uma receita de bolo"), o agente responde o limite e ignora a parte fora do escopo.
+* **5 foram reprovadas só pelo LLM juiz**, com todas as verificações determinísticas aprovadas. Nos 2 casos de IDOR, nenhum dado de terceiro foi exposto nem alterado; o juiz penalizou o tom (em um deles, confundiu qual cliente estava autenticado).
+
+**O que os evals já corrigiram:** execuções anteriores revelaram um `{timestamp}` literal no prompt do câmbio, que o ADK tratava como variável de estado e fazia todo turno de câmbio falhar; o texto da recusa citando o "Agente de Entrevista"; a tool de encerramento devolvendo uma instrução interna que o modelo repetia ao cliente; e a despedida vazia após o "tchau". Todos têm teste offline hoje (por exemplo, `tests/unit/test_instrucoes_agentes.py` renderiza o prompt de cada agente com o motor de template do ADK).
