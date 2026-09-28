@@ -305,7 +305,7 @@ class EvalReport:
         reprovados = [(sid, info) for sid, info in sorted(cenarios.items()) if info["passed"] < info["runs"]]
         linhas += ["", "## Cenários com execuções reprovadas", ""]
         linhas += [
-            f"- `{sid}` ({info['category']}): {info['passed']}/{info['runs']} aprovadas — {'; '.join(self._motivos(sid)[:3])}"
+            f"- `{sid}` ({info['category']}): {info['passed']}/{info['runs']} aprovadas: {'; '.join(self._motivos(sid)[:3])}"
             for sid, info in reprovados
         ] or ["- Nenhum."]
 
