@@ -1,4 +1,3 @@
-```markdown
 # 🏦 Banco Ágil — Sistema Bancário Multi-Agente de IA
 
 Bem-vindo ao repositório do **Banco Ágil**, um sistema de atendimento bancário automatizado baseado em **Agentes de IA Especializados** e orquestrado com o **Google ADK (Agent Developer Kit)** e **Streamlit**.
@@ -212,5 +211,4 @@ Para validar apenas a lógica de negócio, guardrails e adapters instantaneament
 
 ```bash
 pytest tests/unit/
-```
 ```
