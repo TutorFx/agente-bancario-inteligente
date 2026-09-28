@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import Any, Mapping
 
 from root_agent.domain.value_objects import CPF
 
@@ -52,7 +53,7 @@ def validar_aumento_limite(limite_atual: float, novo_limite: float, limite_maxim
         )
     return True, ""
 
-def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
+def calcular_score_detalhado(entrevista: Mapping[str, Any]) -> tuple[int, dict[str, int]]:
     """
     Score ponderado por categoria, cada uma com teto próprio (0 a 1000):
     - Renda mensal:          até 300 pts (escala de raiz quadrada até teto de R$ 30.000)

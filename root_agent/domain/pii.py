@@ -37,12 +37,12 @@ _REGEX_PREFIXO_MOEDA = re.compile(r"R\$\s*$")
 _DIGITOS_CPF = 11
 
 
-def _eh_valor_monetario(match: re.Match) -> bool:
+def _eh_valor_monetario(match: re.Match[str]) -> bool:
     inicio = match.start()
     return bool(_REGEX_PREFIXO_MOEDA.search(match.string[max(0, inicio - 4):inicio]))
 
 
-def _mascarar_sequencia(match: re.Match) -> str:
+def _mascarar_sequencia(match: re.Match[str]) -> str:
     trecho = match.group(0)
     if _eh_valor_monetario(match):
         return trecho
