@@ -53,7 +53,7 @@ class SessionConflictMiddleware(BaseHTTPMiddleware):
             async with self.session_queue.acquire(session_id):
                 response = await call_next(request)
                 
-                # Se o WSO2 mandou POST e a sessão já existia, faremos um Loopback enviando um PATCH real
+                # Se o cliente mandou POST e a sessão já existia, faremos um Loopback enviando um PATCH real
                 if response.status_code == 409:
                     logger.info("Detectado conflito 409 para session_id=%s. Executando fallback com PATCH...", session_id)
                     patch_url = f"/apps/{app_name}/users/{user_id}/sessions/{session_id}"
@@ -68,7 +68,7 @@ class SessionConflictMiddleware(BaseHTTPMiddleware):
                     base_url = str(request.base_url)
                     
                     async with httpx.AsyncClient(transport=transport, base_url=base_url, timeout=15.0) as client:
-                        # O WSO2 envia um payload de Criação (só com sessionId).
+                        # O cliente envia um payload de Criação (só com sessionId).
                         # O ADK PATCH exige um payload de Atualização (com stateDelta).
                         # Injetamos o stateDelta vazio para evitar o erro 422 de validação.
                         patch_payload = {}
