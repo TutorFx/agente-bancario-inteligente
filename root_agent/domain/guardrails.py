@@ -90,9 +90,11 @@ def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
     parcela_dependentes = dep_map.get(num_dep, 50)
 
     # 5. Dívidas (max 150 pts)
+    # Conservador: só pontua quando a ausência de dívidas é explícita; valores
+    # ambíguos (ex: "tenho sim", "talvez") são tratados como dívida ativa.
     dividas_raw = entrevista.get("tem_dividas", True)
     if isinstance(dividas_raw, str):
-        tem_dividas = dividas_raw.strip().lower() in ("sim", "s", "true", "1")
+        tem_dividas = dividas_raw.strip().lower() not in ("nao", "não", "n", "false", "0", "nao tenho", "não tenho")
     else:
         tem_dividas = bool(dividas_raw)
     parcela_dividas = 0 if tem_dividas else 150
