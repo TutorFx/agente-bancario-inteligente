@@ -117,8 +117,11 @@ Como o **Streamlit** executa requisições em múltiplas threads simultâneas, o
 O sistema adota o padrão de segurança corporativo de Defesa em Profundidade para blindar os agentes de inteligência artificial contra ataques de **Prompt Injection**, **Jailbreak** e **Prompt Leakage**:
 1. **Input Guardrail Híbrido (`input_middleware.py`):** 
    - **Determinístico (Regex):** Bloqueia instantaneamente termos óbvios de override com latência zero.
-   - **Semântico (LLM):** Inspeciona a intenção do usuário antes do roteamento, bloqueando tentativas de adoção de persona de autoridade (ex: "sou auditor do sistema") ou cálculos ilícitos.
-2. **Output Guardrail Semântico (`output_middleware.py`):** Intercepta a resposta gerada pelo Agente antes de enviar ao usuário. Verifica se a IA não "alucinou" vazando nomes técnicos de ferramentas, instruções internas de prompt ou tratou de assuntos fora do escopo bancário.
+   - **Semântico (LLM):** Classifica a mensagem em 3 níveis — `SEGURO`, `FORA_DE_ESCOPO` (ex: pedido de código, receitas; segue para o `agente_fora_escopo`) e `ATAQUE` (persona de autoridade para mudar regras, pedido de prompt/ferramentas, dados de outros clientes). **Só `ATAQUE` encerra o atendimento.**
+   - **Uma chamada por turno:** o veredito fica no estado da sessão (`temp:guardrail_entrada`, chaveado pelo `invocation_id`) e é reaproveitado pelos subagentes que recebem o turno por transferência. Mensagens só com números e pontuação (CPF, data, valores) dispensam a chamada.
+2. **Output Guardrail (`output_middleware.py`):** Intercepta a resposta gerada pelo Agente antes de enviar ao usuário. A regex de termos internos (nomes de ferramentas, "system prompt") roda em toda resposta; a LLM só é consultada diante de sinal suspeito (bloco de código ou texto longo sem nenhum termo bancário).
+   - **Política de falha explícita** (erro, timeout ou resposta fora do formato), configurável via `.env` (veja [`root_agent/config.py`](root_agent/config.py)): entrada *fail-closed* nos agentes de crédito/score e *fail-open* com log na conversa geral; saída *fail-closed*.
+   - **Métricas:** cada chamada registra latência e contagem acumulada do turno no log (`guardrail.llm | ... latencia_ms=... chamadas_turno=...`).
 3. **Prompts Enxutos:** Com as camadas externas garantindo a segurança, os *System Prompts* dos subagentes ficam limpos e focados exclusivamente na lógica de negócio e no bom atendimento, economizando tokens e reduzindo a latência global.
 
 ### 🔐 Autorização Determinística (não depende do prompt)
@@ -225,8 +228,8 @@ O projeto tem uma suíte `pytest` dividida em três camadas:
 
 | Camada | Pasta | Testes | O que cobre | Dependências externas |
 | :--- | :--- | :---: | :--- | :--- |
-| **Unitária** | `tests/unit/` | 164 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
-| **Integração** | `tests/integration/` | 6 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC | Nenhuma |
+| **Unitária** | `tests/unit/` | 222 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
+| **Integração** | `tests/integration/` | 8 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC. Chamadas de guardrail por turno no `InMemoryRunner` do ADK, com LLMs roteirizadas | Nenhuma |
 | **E2E** | `tests/e2e/` | 6 | Autenticação e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit | Internet + `GEMINI_API_KEY` |
 
 > Números de `pytest --collect-only -q`. Após alterar a suíte, atualize a tabela com essa saída.
@@ -247,7 +250,7 @@ pytest
 
 > ⚠️ **Anotação Importante sobre a Suíte Completa:**
 > * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
-> * **Tempo de Execução:** os 176 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
+> * **Tempo de Execução:** os 236 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
 > * **Cobertura:** ~95% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 
 #### 3. Execução Rápida (Unitários + Integração, 100% Determinísticos)
@@ -256,4 +259,4 @@ Para validar lógica de negócio, middlewares, presenters, guardrails e adapter 
 ```bash
 pytest tests/unit/ tests/integration/
 ```
-> 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~94% de cobertura** de `root_agent` (só os unitários: ~94%), acima dos **75%** exigidos.
+> 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~96% de cobertura** de `root_agent` (só os unitários: ~96%), acima dos **75%** exigidos.

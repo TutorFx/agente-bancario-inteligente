@@ -174,4 +174,4 @@ async def test_after_model_callback_remove_anuncio_e_preserva_function_call():
     assert result is None
     assert response.content.parts[0].text == "Um instante!"
     assert response.content.parts[1].function_call.name == "transfer_to_agent"
-    validador.assert_awaited_once_with("Um instante!")
+    validador.assert_awaited_once_with(mock_context, "Um instante!", parcial=False)

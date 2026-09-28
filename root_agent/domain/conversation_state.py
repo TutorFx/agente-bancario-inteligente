@@ -19,3 +19,8 @@ AUTH_CPF_TEMP_KEY = "auth_cpf_temp"
 CLIENTE_KEY = "cliente_autenticado"
 ENTREVISTA_KEY = "entrevista_dados"
 ENTREVISTA_REALIZADA_KEY = "entrevista_realizada_na_sessao"
+
+# Guardrails: valem só para o turno atual. O prefixo temp: faz o ADK mantê-las em memória
+# durante a invocação (inclusive nos subagentes que recebem o turno) sem persisti-las.
+GUARDRAIL_ENTRADA_KEY = "temp:guardrail_entrada"
+GUARDRAIL_METRICAS_KEY = "temp:guardrail_metricas"
