@@ -9,10 +9,10 @@ from root_agent.application.middlewares.auth_guard import (
 
 
 def get_credito_tools(adapter: BancoAgilAdapter):
-    def consultar_limite_credito(tool_context: ToolContext = None) -> str:
+    def consultar_limite_credito(tool_context: ToolContext | None = None) -> str:
         """Retorna nome, conta, limite e score atual do cliente autenticado na sessão."""
         cpf = cpf_do_cliente_autenticado(tool_context)
-        if not cpf:
+        if not cpf or tool_context is None:
             return json.dumps(ERRO_NAO_AUTENTICADO)
         cliente = adapter.buscar_cliente(cpf)
         if not cliente:
@@ -20,7 +20,7 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         # Minimização de PII: CPF e data de nascimento não são devolvidos à LLM
         return json.dumps(cliente.model_dump(include={"nome", "conta", "score_credito", "limite_credito"}))
 
-    def solicitar_aumento_limite(novo_limite: float, tool_context: ToolContext = None) -> str:
+    def solicitar_aumento_limite(novo_limite: float, tool_context: ToolContext | None = None) -> str:
         """
         Processa a solicitação de aumento de limite do cliente autenticado na sessão,
         validando o valor pela tabela de faixas de score e registrando a solicitação.
@@ -29,7 +29,7 @@ def get_credito_tools(adapter: BancoAgilAdapter):
             novo_limite: Novo limite de crédito desejado, em R$.
         """
         cpf = cpf_do_cliente_autenticado(tool_context)
-        if not cpf:
+        if not cpf or tool_context is None:
             return json.dumps(ERRO_NAO_AUTENTICADO)
         cliente = adapter.buscar_cliente(cpf)
         if not cliente:
@@ -55,7 +55,7 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         despesas_mensais: float,
         num_dependentes: int,
         tem_dividas: str,
-        tool_context: ToolContext = None,
+        tool_context: ToolContext | None = None,
     ) -> str:
         """
         Calcula o novo score de crédito do cliente autenticado com base nos dados
@@ -72,7 +72,7 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         Retorna JSON com novo_score calculado, detalhamento das parcelas e status da persistência.
         """
         cpf = cpf_do_cliente_autenticado(tool_context)
-        if not cpf:
+        if not cpf or tool_context is None:
             return json.dumps(ERRO_NAO_AUTENTICADO)
 
         entrevista = {

@@ -1,6 +1,6 @@
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, MutableMapping
+from typing import Any, Protocol
 
 class BankingConversationState(str, Enum):
     IDLE = "idle"
@@ -8,6 +8,15 @@ class BankingConversationState(str, Enum):
     AGUARDANDO_CPF = "aguardando_cpf"
     AGUARDANDO_DATA_NASCIMENTO = "aguardando_data_nascimento"
     AUTENTICADO = "autenticado"
+
+class EstadoSessao(Protocol):
+    """O que o domínio usa do estado da sessão; o State do ADK e um dict atendem."""
+
+    def get(self, key: str, default: Any = None) -> Any: ...
+    def __getitem__(self, key: str) -> Any: ...
+    def __setitem__(self, key: str, value: Any) -> None: ...
+    def __contains__(self, key: str) -> bool: ...
+
 
 CONVERSATION_STATE_KEY = "conv_state"
 AUTH_TENTATIVAS_KEY = "auth_tentativas"
@@ -45,7 +54,7 @@ ESTADO_SEM_AUTENTICACAO = MappingProxyType({
 })
 
 
-def resetar_autenticacao(state: MutableMapping[str, Any]) -> None:
+def resetar_autenticacao(state: EstadoSessao) -> None:
     """
     Remove o cliente autenticado e as credenciais temporárias da sessão. Recebe o State do
     contexto (tool ou callback): escrever por ele grava no state_delta do evento, que é o que o

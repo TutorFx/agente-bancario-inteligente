@@ -1,10 +1,10 @@
 import json
-from typing import Any, Mapping, Optional
+from typing import Any, Optional
 
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
-from root_agent.domain.conversation_state import CLIENTE_KEY
+from root_agent.domain.conversation_state import CLIENTE_KEY, EstadoSessao
 from root_agent.utils import get_logger
 
 logger = get_logger("middleware.auth_guard")
@@ -25,7 +25,7 @@ ERRO_NAO_AUTENTICADO = {
 }
 
 
-def _cliente_da_sessao(state: Mapping[str, Any]) -> Optional[dict]:
+def _cliente_da_sessao(state: EstadoSessao) -> Optional[dict[str, Any]]:
     cliente = state.get(CLIENTE_KEY)
     if isinstance(cliente, str):
         try:
