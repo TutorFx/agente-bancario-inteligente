@@ -40,7 +40,7 @@ def _aguardando_data_nascimento(texto: str) -> bool:
 import re
 
 _REGEX_OUTPUT_FORBIDDEN = re.compile(
-    r"(?i)(consultar_cotacao|consultar_limite|solicitar_aumento_limite|calcular_e_atualizar_score|autenticar_cliente|encerrar_atendimento|transfer_to_agent|prompt|instruções|guidelines)"
+    r"(?i)(consultar_cotacao|consultar_limite|solicitar_aumento_limite|calcular_e_atualizar_score|autenticar_cliente|encerrar_atendimento|transfer_to_agent|system prompt|guidelines)"
 )
 
 async def _validar_output_semantico(texto: str) -> bool:
@@ -101,6 +101,11 @@ async def after_model_callback(
             parts=[types.Part(text="Desculpe, não consegui processar a resposta corretamente. Como posso ajudar você com outro assunto bancário?")]
         )
         texto = _extrair_texto_resposta(llm_response) # Atualiza o texto para as verificações abaixo
+
+    # A detecção por palavra-chave só vale durante o login: após autenticado, uma
+    # resposta que mencione "CPF" não pode reabrir a coleta de credenciais.
+    if callback_context.state.get("is_authenticated") is True:
+        return None
 
     if _aguardando_data_nascimento(texto):
         callback_context.state[CONVERSATION_STATE_KEY] = BankingConversationState.AGUARDANDO_DATA_NASCIMENTO

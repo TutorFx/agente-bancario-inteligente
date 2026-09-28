@@ -4,6 +4,7 @@ from root_agent.infrastructure.llm import custom_model
 from root_agent.dependencies import calcular_e_atualizar_score
 from root_agent.application.middlewares.input_middleware import before_model_callback
 from root_agent.application.middlewares.output_middleware import after_model_callback
+from root_agent.application.middlewares.auth_guard import before_tool_callback
 
 entrevista_credito_agent = Agent(
     model=custom_model,
@@ -11,6 +12,7 @@ entrevista_credito_agent = Agent(
     description='Agente que conduz entrevista financeira estruturada, calcula o novo score de crédito com fórmula ponderada e atualiza o cadastro do cliente.',
     before_model_callback=before_model_callback,
     after_model_callback=after_model_callback,
+    before_tool_callback=before_tool_callback,
     tools=[calcular_e_atualizar_score],
     instruction="""Você é o Agente de Entrevista de Crédito do Banco Ágil.
 
@@ -63,8 +65,7 @@ Você é um agente conversacional em tempo real. Analise o HISTÓRICO DA CONVERS
    Está correto? (Sim/Não)"
 
 2. Se o cliente confirmar ESTE RESUMO (dizendo "Sim", "Correto", "Isso", "Confirmado", etc.):
-   Acione IMEDIATAMENTE a ferramenta `calcular_e_atualizar_score` com os seguintes parâmetros:
-   - `cpf`: CPF do cliente autenticado (obtenha de {cliente_autenticado?} ou do histórico da conversa)
+   Acione IMEDIATAMENTE a ferramenta `calcular_e_atualizar_score` com os seguintes parâmetros (o cliente autenticado é identificado automaticamente pela sessão):
    - `renda_mensal`: float (ex: 8000.0)
    - `tipo_emprego`: 'formal', 'autonomo' ou 'desempregado'
    - `despesas_mensais`: float (ex: 2500.0)

@@ -4,6 +4,7 @@ from root_agent.infrastructure.llm import custom_model
 from root_agent.dependencies import consultar_cotacao, encerrar_atendimento
 from root_agent.application.middlewares.input_middleware import before_model_callback
 from root_agent.application.middlewares.output_middleware import after_model_callback
+from root_agent.application.middlewares.auth_guard import before_tool_callback
 
 cambio_agent = Agent(
     model=custom_model,
@@ -11,6 +12,7 @@ cambio_agent = Agent(
     description='Agente que consulta cotações de moedas em tempo real.',
     before_model_callback=before_model_callback,
     after_model_callback=after_model_callback,
+    before_tool_callback=before_tool_callback,
     tools=[consultar_cotacao, encerrar_atendimento],
     instruction="""Você é o Agente de Câmbio do Banco Ágil.
 

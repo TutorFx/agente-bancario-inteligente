@@ -120,6 +120,13 @@ O sistema adota o padrão de segurança corporativo de Defesa em Profundidade pa
 2. **Output Guardrail Semântico (`output_middleware.py`):** Intercepta a resposta gerada pelo Agente antes de enviar ao usuário. Verifica se a IA não "alucinou" vazando nomes técnicos de ferramentas, instruções internas de prompt ou tratou de assuntos fora do escopo bancário.
 3. **Prompts Enxutos:** Com as camadas externas garantindo a segurança, os *System Prompts* dos subagentes ficam limpos e focados exclusivamente na lógica de negócio e no bom atendimento, economizando tokens e reduzindo a latência global.
 
+### 🔐 Autorização Determinística (não depende do prompt)
+1. **Identidade só pela sessão (anti-IDOR):** as tools de crédito e score não recebem CPF da LLM; o cliente é resolvido exclusivamente a partir de `cliente_autenticado` no estado da sessão (`auth_guard.cpf_do_cliente_autenticado`).
+2. **`before_tool_callback` nos subagentes:** qualquer tool de negócio (crédito, score, câmbio) é bloqueada enquanto `is_authenticated` não for `True`, mesmo que a LLM seja induzida a transferir o cliente.
+3. **Autenticação *fail-closed*:** o login só é concedido diante de um retorno explícito de sucesso de `autenticar_cliente`; erros técnicos não autenticam nem consomem tentativas.
+4. **Estado protegido na API:** o `ProtectedStateMiddleware` rejeita (403) requisições que tentem definir chaves de autenticação via `state`/`stateDelta` nos endpoints REST do ADK.
+5. **Minimização de PII:** a data de nascimento (credencial) não é mantida no estado da sessão nem devolvida à LLM pelas tools.
+
 ---
 
 ## 🚀 6. Começando (Tutorial de Execução e Testes)

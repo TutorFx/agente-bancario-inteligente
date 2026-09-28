@@ -2,7 +2,7 @@ import csv, os
 from datetime import datetime, timezone
 from filelock import FileLock, Timeout
 from root_agent.domain.models import ClienteDTO, SolicitacaoLimiteDTO, CotacaoDTO, RegraScoreLimiteDTO
-from root_agent.domain.guardrails import limpar_cpf
+from root_agent.domain.guardrails import limpar_cpf, validar_aumento_limite
 from root_agent.utils import get_logger
 
 logger = get_logger(__name__)
@@ -149,35 +149,20 @@ class BancoAgilAdapter:
                         score = int(row["score_credito"])
                         limite_maximo = self.obter_limite_maximo_por_score(score)
 
-                        if novo_limite <= limite_atual:
-                            auditoria_params = (row["cpf"], limite_atual, novo_limite, "rejeitado")
-                            resultado_dto = SolicitacaoLimiteDTO(
-                                aprovado=False,
-                                motivo="O novo limite deve ser maior que o limite atual.",
-                                limite_anterior=limite_atual,
-                                limite_novo=None,
-                                limite_maximo_permitido=limite_maximo
-                            )
-                        elif novo_limite <= limite_maximo:
+                        # Decisão delegada ao domínio; o adapter apenas persiste e audita
+                        aprovado, motivo = validar_aumento_limite(limite_atual, novo_limite, limite_maximo)
+                        if aprovado:
                             row["limite_credito"] = f"{novo_limite:.2f}"
                             self._salvar_clientes(clientes)
-                            auditoria_params = (row["cpf"], limite_atual, novo_limite, "aprovado")
-                            resultado_dto = SolicitacaoLimiteDTO(
-                                aprovado=True,
-                                motivo="Aprovado de acordo com a política de crédito.",
-                                limite_anterior=limite_atual,
-                                limite_novo=novo_limite,
-                                limite_maximo_permitido=limite_maximo
-                            )
-                        else:
-                            auditoria_params = (row["cpf"], limite_atual, novo_limite, "rejeitado")
-                            resultado_dto = SolicitacaoLimiteDTO(
-                                aprovado=False,
-                                motivo=f"Score insuficiente para o valor solicitado. O limite máximo permitido para o seu score atual ({score}) é de R$ {limite_maximo:,.2f}.",
-                                limite_anterior=limite_atual,
-                                limite_novo=None,
-                                limite_maximo_permitido=limite_maximo
-                            )
+
+                        auditoria_params = (row["cpf"], limite_atual, novo_limite, "aprovado" if aprovado else "rejeitado")
+                        resultado_dto = SolicitacaoLimiteDTO(
+                            aprovado=aprovado,
+                            motivo=motivo or "Aprovado de acordo com a política de crédito.",
+                            limite_anterior=limite_atual,
+                            limite_novo=novo_limite if aprovado else None,
+                            limite_maximo_permitido=limite_maximo
+                        )
                         break
 
                 if resultado_dto is None:

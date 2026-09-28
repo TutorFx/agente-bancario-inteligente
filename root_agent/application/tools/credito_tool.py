@@ -1,55 +1,43 @@
 import json
 from google.adk.tools.tool_context import ToolContext
 from root_agent.infrastructure.adapters.banco_agil_adapter import BancoAgilAdapter
-from root_agent.domain.guardrails import (
-    validar_aumento_limite,
-    limpar_cpf,
-    calcular_score_detalhado,
+from root_agent.domain.guardrails import calcular_score_detalhado
+from root_agent.application.middlewares.auth_guard import (
+    cpf_do_cliente_autenticado,
+    ERRO_NAO_AUTENTICADO,
 )
 
-def _resolver_cpf(cpf: str | None, tool_context: ToolContext | None = None) -> str:
-    if cpf and str(cpf).strip():
-        return str(cpf).strip()
-    if tool_context and hasattr(tool_context, "state"):
-        cpf_state = tool_context.state.get("auth_cpf_temp")
-        if cpf_state:
-            return str(cpf_state)
-        cliente_state = tool_context.state.get("cliente_autenticado")
-        if cliente_state:
-            if isinstance(cliente_state, dict):
-                return str(cliente_state.get("cpf", ""))
-            elif isinstance(cliente_state, str):
-                try:
-                    data = json.loads(cliente_state)
-                    return str(data.get("cpf", ""))
-                except (json.JSONDecodeError, TypeError):
-                    pass
-    return str(cpf or "")
 
 def get_credito_tools(adapter: BancoAgilAdapter):
-    def consultar_limite_credito(cpf: str = "", tool_context: ToolContext = None) -> str:
-        """Retorna limite e score atual do cliente."""
-        cpf_resolvido = _resolver_cpf(cpf, tool_context)
-        cliente = adapter.buscar_cliente(cpf_resolvido)
+    def consultar_limite_credito(tool_context: ToolContext = None) -> str:
+        """Retorna nome, conta, limite e score atual do cliente autenticado na sessão."""
+        cpf = cpf_do_cliente_autenticado(tool_context)
+        if not cpf:
+            return json.dumps(ERRO_NAO_AUTENTICADO)
+        cliente = adapter.buscar_cliente(cpf)
         if not cliente:
             return json.dumps({"erro": "cliente_nao_encontrado"})
-        return json.dumps(cliente.model_dump())
+        # Minimização de PII: CPF e data de nascimento não são devolvidos à LLM
+        return json.dumps(cliente.model_dump(include={"nome", "conta", "score_credito", "limite_credito"}))
 
-    def solicitar_aumento_limite(cpf: str, novo_limite: float, tool_context: ToolContext = None) -> str:
+    def solicitar_aumento_limite(novo_limite: float, tool_context: ToolContext = None) -> str:
         """
-        Processa a solicitação de aumento de limite consultando a política
-        dinâmica de crédito e persistindo log de auditoria.
+        Processa a solicitação de aumento de limite do cliente autenticado na sessão,
+        consultando a política dinâmica de crédito e persistindo log de auditoria.
+
+        Parâmetros:
+            novo_limite: Novo limite de crédito desejado, em R$.
         """
-        cpf_resolvido = _resolver_cpf(cpf, tool_context)
-        cliente = adapter.buscar_cliente(cpf_resolvido)
+        cpf = cpf_do_cliente_autenticado(tool_context)
+        if not cpf:
+            return json.dumps(ERRO_NAO_AUTENTICADO)
+        cliente = adapter.buscar_cliente(cpf)
         if not cliente:
             return json.dumps({"erro": "cliente_nao_encontrado"})
 
-        entrevista_feita = False
-        if tool_context and hasattr(tool_context, "state"):
-            entrevista_feita = bool(tool_context.state.get("entrevista_realizada_na_sessao", False))
+        entrevista_feita = bool(tool_context.state.get("entrevista_realizada_na_sessao", False))
 
-        resultado = adapter.solicitar_aumento_limite(cpf_resolvido, novo_limite)
+        resultado = adapter.solicitar_aumento_limite(cpf, novo_limite)
         res_data = resultado.model_dump()
         limite_max_score = (
             resultado.limite_maximo_permitido
@@ -61,16 +49,17 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         res_data["entrevista_realizada_na_sessao"] = entrevista_feita
         return json.dumps(res_data)
 
-    def atualizar_score_credito(cpf: str, novo_score: int, tool_context: ToolContext = None) -> str:
+    def atualizar_score_credito(novo_score: int, tool_context: ToolContext = None) -> str:
         """Persiste novo score após entrevista."""
-        cpf_resolvido = _resolver_cpf(cpf, tool_context)
-        sucesso = adapter.atualizar_score(cpf_resolvido, novo_score)
+        cpf = cpf_do_cliente_autenticado(tool_context)
+        if not cpf:
+            return json.dumps(ERRO_NAO_AUTENTICADO)
+        sucesso = adapter.atualizar_score(cpf, novo_score)
         if sucesso:
             return json.dumps({"sucesso": True, "novo_score": novo_score})
         return json.dumps({"sucesso": False, "erro": "cliente_nao_encontrado"})
 
     def calcular_e_atualizar_score(
-        cpf: str,
         renda_mensal: float,
         tipo_emprego: str,
         despesas_mensais: float,
@@ -79,12 +68,11 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         tool_context: ToolContext = None,
     ) -> str:
         """
-        Calcula o novo score de crédito com base nos dados coletados na entrevista
-        utilizando a fórmula calibrada de risco por categoria com tetos estritos,
-        e persiste o resultado no banco de dados (clientes.csv).
+        Calcula o novo score de crédito do cliente autenticado com base nos dados
+        coletados na entrevista, utilizando a fórmula calibrada de risco por categoria
+        com tetos estritos, e persiste o resultado no banco de dados (clientes.csv).
 
         Parâmetros:
-            cpf: CPF do cliente autenticado.
             renda_mensal: Renda mensal bruta em R$.
             tipo_emprego: Situação de emprego ('formal', 'autonomo' ou 'desempregado').
             despesas_mensais: Total de despesas fixas mensais em R$.
@@ -93,6 +81,10 @@ def get_credito_tools(adapter: BancoAgilAdapter):
 
         Retorna JSON com novo_score calculado, detalhamento das parcelas e status da persistência.
         """
+        cpf = cpf_do_cliente_autenticado(tool_context)
+        if not cpf:
+            return json.dumps(ERRO_NAO_AUTENTICADO)
+
         entrevista = {
             "renda_mensal": renda_mensal,
             "tipo_emprego": tipo_emprego,
@@ -104,11 +96,8 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         novo_score, detalhes = calcular_score_detalhado(entrevista)
 
         # --- Persistência ---
-        cpf_resolvido = _resolver_cpf(cpf, tool_context)
-        sucesso = adapter.atualizar_score(cpf_resolvido, novo_score)
-
-        if tool_context and hasattr(tool_context, "state"):
-            tool_context.state["entrevista_realizada_na_sessao"] = True
+        sucesso = adapter.atualizar_score(cpf, novo_score)
+        tool_context.state["entrevista_realizada_na_sessao"] = True
 
         return json.dumps({
             "novo_score": novo_score,

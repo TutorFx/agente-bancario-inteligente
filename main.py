@@ -2,6 +2,7 @@ from google.adk.cli.fast_api import get_fast_api_app
 
 from root_agent.infrastructure.api.queue.memory_session_queue import MemorySessionQueue
 from root_agent.infrastructure.api.middlewares.session_conflict_middleware import SessionConflictMiddleware
+from root_agent.infrastructure.api.middlewares.protected_state_middleware import ProtectedStateMiddleware
 
 # 1. Cria a instância base do Google ADK
 app = get_fast_api_app(agents_dir=".", web=True)
@@ -15,5 +16,9 @@ app.add_middleware(
     SessionConflictMiddleware,
     session_queue=session_queue
 )
+
+# 4. Middleware mais externo: impede que o cliente HTTP escreva chaves de autenticação
+# no estado da sessão (state/stateDelta), que só podem ser definidas pelo backend.
+app.add_middleware(ProtectedStateMiddleware)
 
 # O app agora está pronto para ser servido via Uvicorn (veja o docker-compose.yml)

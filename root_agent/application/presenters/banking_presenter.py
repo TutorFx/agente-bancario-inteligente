@@ -39,6 +39,13 @@ class BankingPresenter:
         )
 
     @staticmethod
+    def autenticacao_erro_tecnico() -> str:
+        return (
+            "😕 Não conseguimos validar seus dados agora por uma instabilidade.\n\n"
+            "Por favor, informe seu *CPF* novamente para tentarmos outra vez:"
+        )
+
+    @staticmethod
     def autenticacao_sucesso(nome: str) -> str:
         return (
             f"✅ Identidade confirmada! Olá, *{nome}*!\n\n"

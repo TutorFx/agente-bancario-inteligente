@@ -43,10 +43,14 @@ def validar_moeda(moeda: str) -> bool:
     return moeda.upper().strip() in MOEDAS_SUPORTADAS
 
 def validar_aumento_limite(limite_atual: float, novo_limite: float, limite_maximo: float | None = None) -> tuple[bool, str]:
+    """Regra de negócio única para decisão de aumento de limite (usada pelo BancoAgilAdapter)."""
     if novo_limite <= limite_atual:
         return False, "O novo limite deve ser maior que o limite atual."
     if limite_maximo is not None and novo_limite > limite_maximo:
-        return False, f"O valor solicitado excede o limite máximo permitido para o seu score de crédito (R$ {limite_maximo:,.2f})."
+        return False, (
+            "Score insuficiente para o valor solicitado: excede o limite máximo permitido "
+            f"para o seu score de crédito (R$ {limite_maximo:,.2f})."
+        )
     return True, ""
 
 def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
