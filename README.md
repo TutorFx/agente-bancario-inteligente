@@ -84,7 +84,8 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
 
 1. **Distorção de Borda no Algoritmo de Score:**
    * *Desafio:* A razão ilimitada entre renda e despesas fazia com que rendas altas atingissem o teto de 1000 pontos isoladamente, anulando a penalidade de desemprego ou dívidas.
-   * *Solução:* Migração para um modelo ponderado por categoria em `guardrails.py` com teto máximo individual por componente, comprovado via teste de borda unitário.
+   * *Solução:* Migração para um modelo ponderado por categoria em `guardrails.py` com teto máximo individual por componente: renda até 300 pts (raiz quadrada, saturando em R$ 30.000), emprego até 200 (CLT 200, autônomo 100, desempregado 0), comprometimento até 200, dependentes até 150 e dívidas até 150.
+   * *Regras de borda:* (a) com renda ≤ 0 o comprometimento vale 0 pts, pois não há renda a comprometer (antes, renda e despesa zeradas concediam os 200 pts cheios e um desempregado sem renda chegava a 500 pts); (b) o score de desempregado tem teto de **600 pts**, independentemente da renda declarada, mantendo-o fora das faixas de limite ≥ 700 (antes, desempregado com R$ 50 mil de renda chegava a 800 pts). O corte é exposto no detalhamento como `ajuste_teto_desemprego`. Ambos os casos têm testes parametrizados em `tests/unit/test_guardrails.py`.
 2. **Condições de Corrida no I/O do Streamlit:**
    * *Desafio:* Múltiplas requisições simultâneas causavam *lost updates* e arquivos CSV vazios durante sobrescritas.
    * *Solução:* Implementação de `FileLock` e gravação em arquivo temporário com substituição atômica (`os.replace`).

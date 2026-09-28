@@ -10,6 +10,7 @@ from root_agent.domain.guardrails import (
     validar_aumento_limite,
     calcular_score,
     calcular_score_detalhado,
+    TETO_SCORE_DESEMPREGADO,
 )
 
 def test_limpar_cpf():
@@ -190,3 +191,65 @@ def test_mensagem_data_invalida_nao_vaza_dados_de_clientes():
                 data_real = row.get("data_nascimento")
                 if data_real:
                     assert data_real not in msg, f"Vazamento detectado: {data_real} encontrado na mensagem de erro!"
+
+
+def _entrevista(renda, emprego, despesas=0.0, dependentes=0, dividas="nao"):
+    return {
+        "renda_mensal": renda,
+        "tipo_emprego": emprego,
+        "despesas_mensais": despesas,
+        "num_dependentes": dependentes,
+        "tem_dividas": dividas,
+    }
+
+
+@pytest.mark.parametrize("emprego", ["desempregado", "formal", "autônomo"])
+@pytest.mark.parametrize("renda", [0.0, -500.0, None])
+def test_calcular_score_renda_zero_nao_pontua_comprometimento(renda, emprego):
+    _, detalhes = calcular_score_detalhado(_entrevista(renda, emprego))
+    assert detalhes["parcela_renda"] == 0
+    assert detalhes["parcela_comprometimento"] == 0
+
+
+def test_calcular_score_desempregado_sem_renda_e_sem_dividas():
+    # Antes: 500 pts (comprometimento cheio com renda zero)
+    score, _ = calcular_score_detalhado(_entrevista(0.0, "desempregado"))
+    assert score == 300
+
+
+@pytest.mark.parametrize("renda", [30000.0, 50000.0, 1_000_000.0])
+def test_calcular_score_desempregado_renda_alta_respeita_teto(renda):
+    # Antes: 800 pts (faixa de R$ 10 mil) para renda >= R$ 30 mil
+    score, detalhes = calcular_score_detalhado(_entrevista(renda, "desempregado"))
+    assert score == TETO_SCORE_DESEMPREGADO
+    assert detalhes["ajuste_teto_desemprego"] == -200
+    assert sum(detalhes.values()) == score
+
+
+def test_calcular_score_desempregado_abaixo_do_teto_nao_sofre_ajuste():
+    score, detalhes = calcular_score_detalhado(_entrevista(1000.0, "desempregado", 2000.0, 4, "sim"))
+    assert score == 104
+    assert detalhes["ajuste_teto_desemprego"] == 0
+
+
+@pytest.mark.parametrize("renda", [20000.0, 30000.0, 50000.0])
+def test_calcular_score_clt_renda_alta_continua_na_faixa_maxima(renda):
+    score, detalhes = calcular_score_detalhado(_entrevista(renda, "clt", despesas=renda * 0.1))
+    assert score >= 850
+    assert detalhes["ajuste_teto_desemprego"] == 0
+
+
+@pytest.mark.parametrize(
+    "entrevista, esperado",
+    [
+        (_entrevista(30000.0, "formal"), 1000),
+        (_entrevista(1_000_000.0, "formal"), 1000),
+        (_entrevista(0.0, "desempregado", 5000.0, 3, "sim"), 50),
+        (_entrevista(-100.0, "desempregado", -100.0, -1, "sim"), 150),
+    ],
+)
+def test_calcular_score_limites_preservados(entrevista, esperado):
+    score, detalhes = calcular_score_detalhado(entrevista)
+    assert 0 <= score <= 1000
+    assert score == esperado
+    assert sum(detalhes.values()) == score
