@@ -26,8 +26,10 @@ from root_agent.domain.conversation_state import (
     ENTREVISTA_KEY,
     ENTREVISTA_REALIZADA_KEY,
     GUARDRAIL_ENTRADA_KEY,
+    TEXTO_ORIGINAL_USUARIO_KEY,
     resetar_autenticacao,
 )
+from root_agent.domain.pii import mascarar_pii
 from root_agent.application.presenters.banking_presenter import BankingPresenter
 from root_agent.domain.guardrails import (
     validar_formato_cpf,
@@ -105,15 +107,28 @@ def _extrair_texto_usuario(llm_request: LlmRequest) -> str | None:
         pass
     return None
 
-# CPF (com ou sem pontuação) e datas DD/MM/AAAA. Credenciais de login nunca vão para a LLM:
-# o histórico da sessão guarda a mensagem original do usuário e seria reenviado a cada turno.
-_REGEX_CPF = re.compile(r"(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)")
-_REGEX_DATA = re.compile(r"(?<!\d)\d{2}[/-]\d{2}[/-]\d{4}(?!\d)")
+# CPF (em qualquer formato que o login aceita) e datas. Credenciais de login nunca vão para a
+# LLM: sessões antigas, ou rodadas sem o MascaramentoCredenciaisPlugin, guardam a mensagem
+# original do usuário no histórico, que seria reenviado a cada turno.
+_mascarar_pii = mascarar_pii
 
 
-def _mascarar_pii(texto: str) -> str:
-    texto = _REGEX_CPF.sub("[CPF omitido]", texto)
-    return _REGEX_DATA.sub("[data omitida]", texto)
+def _texto_original(callback_context: CallbackContext, texto: str | None) -> str | None:
+    """
+    Com o MascaramentoCredenciaisPlugin, a mensagem do turno chega mascarada (evento e
+    requisição); o texto digitado fica só em memória, sob uma chave temp:. Devolve o original
+    quando `texto` é a versão mascarada dele. A conferência impede que um registro forjado
+    (ex: via stateDelta) troque a mensagem avaliada pelo guardrail por outra.
+    """
+    if not texto:
+        return texto
+    registro = callback_context.state.get(TEXTO_ORIGINAL_USUARIO_KEY)
+    if not isinstance(registro, dict):
+        return texto
+    original = registro.get("original")
+    if isinstance(original, str) and texto == registro.get("mascarado") == mascarar_pii(original):
+        return original
+    return texto
 
 
 def _mascarar_pii_no_request(llm_request: LlmRequest) -> None:
@@ -301,8 +316,8 @@ async def before_model_callback(
 
     # Os textos originais ficam só em memória (máquina de estados e regex do guardrail);
     # tudo o que segue para a LLM (agente e classificador semântico) sai com CPF/datas mascarados.
-    texto_usuario = _extrair_texto_usuario(llm_request)
-    texto_turno = _texto_do_turno(callback_context, llm_request)
+    texto_usuario = _texto_original(callback_context, _extrair_texto_usuario(llm_request))
+    texto_turno = _texto_original(callback_context, _texto_do_turno(callback_context, llm_request))
     _mascarar_pii_no_request(llm_request)
 
     last_content = llm_request.contents[-1] if llm_request.contents else None

@@ -29,6 +29,8 @@ def app():
     {"stateDelta": {"cliente_autenticado": {"cpf": "98765432100"}}},
     {"appName": "root_agent", "state_delta": {"auth_tentativas": 0}},
     {"is_authenticated": True},  # endpoint legado: o body é o próprio estado
+    # Registro forjado do texto pré-mascaramento trocaria a mensagem vista pelo guardrail
+    {"stateDelta": {"temp:texto_original_usuario": {"original": "123", "mascarado": "123"}}},
 ])
 def test_detecta_chaves_protegidas(body):
     assert chaves_protegidas_no_body(json.dumps(body).encode())

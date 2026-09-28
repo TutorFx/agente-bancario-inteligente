@@ -20,7 +20,7 @@ from unittest.mock import patch
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 
-from root_agent.agent import root_agent
+from root_agent.agent import app as banco_agil_app
 from root_agent.dependencies import banco_agil_adapter
 from root_agent.domain.models import CotacaoDTO
 from root_agent.infrastructure.adapters import banco_agil_adapter as adapter_module
@@ -156,7 +156,8 @@ async def executar_conversa(
 ) -> ConversationResult:
     """Roda o roteiro numa sessão nova; com `cliente`, faz login antes (turnos não avaliados)."""
     with ambiente_isolado() as tmp_dir:
-        runner = InMemoryRunner(agent=root_agent, app_name=APP_NAME)
+        # O App traz os plugins de produção (ex: mascaramento de CPF/data antes de persistir)
+        runner = InMemoryRunner(app=banco_agil_app)
         user_id = f"eval_{uuid.uuid4().hex[:8]}"
         session = await runner.session_service.create_session(
             app_name=APP_NAME, user_id=user_id, state=state or {}

@@ -52,3 +52,11 @@ GUARDRAIL_FALHA_ENTRADA_GERAL = _politica_falha("GUARDRAIL_FALHA_ENTRADA_GERAL",
 GUARDRAIL_FALHA_SAIDA = _politica_falha("GUARDRAIL_FALHA_SAIDA", FAIL_CLOSED)
 # Acima deste tamanho, uma resposta sem nenhum termo bancário é tratada como suspeita
 GUARDRAIL_SAIDA_TEXTO_LONGO = int(os.getenv("GUARDRAIL_SAIDA_TEXTO_LONGO", "500"))
+
+# --- API HTTP (main.py) ---
+# Com token, toda rota (exceto /health) exige "Authorization: Bearer <token>" ou "X-API-Key".
+# Sem token, a API só aceita conexões locais (loopback): nada de leitura remota de sessões.
+API_TOKEN = (os.getenv("BANCO_AGIL_API_TOKEN") or "").strip() or None
+
+# Interface de desenvolvimento do ADK (/dev-ui): desligada por padrão, pois exibe sessões e estado
+DEV_UI_HABILITADA = (os.getenv("BANCO_AGIL_DEV_UI") or "").strip().lower() in ("1", "true", "sim", "yes", "on")

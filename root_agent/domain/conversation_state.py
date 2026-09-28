@@ -27,6 +27,11 @@ ENTREVISTA_REALIZADA_KEY = "entrevista_realizada_na_sessao"
 GUARDRAIL_ENTRADA_KEY = "temp:guardrail_entrada"
 GUARDRAIL_METRICAS_KEY = "temp:guardrail_metricas"
 
+# Mensagem do cliente neste turno como foi digitada, antes do mascaramento de CPF/datas feito
+# pelo MascaramentoCredenciaisPlugin: o evento persistido guarda só a versão mascarada, e o
+# original fica em memória (temp:) para a máquina de login e o guardrail de entrada.
+TEXTO_ORIGINAL_USUARIO_KEY = "temp:texto_original_usuario"
+
 # Estado de uma sessão sem cliente autenticado: única lista das chaves de autenticação, usada
 # pela tool encerrar_atendimento, pelo bloqueio/ATAQUE do input_middleware e pelas chaves protegidas.
 # O ADK não apaga chaves do estado: o state_delta só sobrescreve, então None é o que limpa um valor.
