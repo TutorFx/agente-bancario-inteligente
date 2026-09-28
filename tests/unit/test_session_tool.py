@@ -1,3 +1,4 @@
+import json
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
@@ -24,8 +25,10 @@ async def test_encerrar_atendimento_calls_event_publisher_and_returns_success_me
     res = await encerrar_atendimento(callback_context=mock_context)
     
     # Assert
-    assert "Ação de encerramento acionada" in res
-    assert "palavra *Menu*" in res
+    dados = json.loads(res)
+    assert dados["status"] == "atendimento_encerrado"
+    assert "palavra *Menu*" in dados["mensagem_cliente"]
+    assert "Informe ao cliente" not in res
     
     # Como a chamada ao publisher é feita via asyncio.create_task, precisamos ceder o loop para que ela execute
     await asyncio.sleep(0.01)
@@ -83,7 +86,7 @@ async def test_encerrar_atendimento_clears_session_state_and_resets_agent():
     res = await encerrar_atendimento(callback_context=mock_context)
 
     # Assert
-    assert "Ação de encerramento acionada" in res
+    assert json.loads(res)["status"] == "atendimento_encerrado"
     # State reset
     assert mock_context.state["cliente_autenticado"] is None
     assert mock_context.state["is_authenticated"] is False

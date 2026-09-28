@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Optional
 from root_agent.utils import get_logger
 from google.adk.agents.callback_context import CallbackContext
@@ -40,7 +41,12 @@ def get_encerrar_atendimento_tool(publisher: Optional[IEventPublisher] = None):
                 flow_id=EVENTS_FLOW_ID
             ))
 
-        return "Ação de encerramento acionada. Informe ao cliente que o atendimento foi encerrado e que caso queira um novo atendimento pode enviar uma mensagem ou a palavra *Menu*."
+        # Só o texto a ser dito ao cliente: uma instrução no retorno ("informe ao cliente...")
+        # acabava repetida na resposta, e os evals pegaram o vazamento.
+        return json.dumps({
+            "status": "atendimento_encerrado",
+            "mensagem_cliente": "Seu atendimento foi encerrado. Se quiser um novo atendimento, é só enviar uma mensagem ou a palavra *Menu*.",
+        }, ensure_ascii=False)
 
     return encerrar_atendimento
 
