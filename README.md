@@ -225,7 +225,7 @@ O projeto tem uma suíte `pytest` dividida em três camadas:
 
 | Camada | Pasta | Testes | O que cobre | Dependências externas |
 | :--- | :--- | :---: | :--- | :--- |
-| **Unitária** | `tests/unit/` | 133 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
+| **Unitária** | `tests/unit/` | 164 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
 | **Integração** | `tests/integration/` | 6 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC | Nenhuma |
 | **E2E** | `tests/e2e/` | 6 | Autenticação e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit | Internet + `GEMINI_API_KEY` |
 
@@ -247,7 +247,7 @@ pytest
 
 > ⚠️ **Anotação Importante sobre a Suíte Completa:**
 > * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
-> * **Tempo de Execução:** os 145 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
+> * **Tempo de Execução:** os 176 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
 > * **Cobertura:** ~95% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 
 #### 3. Execução Rápida (Unitários + Integração, 100% Determinísticos)
@@ -256,4 +256,4 @@ Para validar lógica de negócio, middlewares, presenters, guardrails e adapter 
 ```bash
 pytest tests/unit/ tests/integration/
 ```
-> 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~93% de cobertura** de `root_agent` (só os unitários: ~92%), acima dos **75%** exigidos.
+> 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~94% de cobertura** de `root_agent` (só os unitários: ~94%), acima dos **75%** exigidos.
