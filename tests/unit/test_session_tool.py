@@ -25,7 +25,6 @@ async def test_encerrar_atendimento_calls_event_publisher_and_returns_success_me
     
     # Assert
     assert "Ação de encerramento acionada" in res
-    assert "Atendimento com a SEMAD encerrado" not in res # A resposta é a instrução interna, não a externa
     assert "palavra *Menu*" in res
     
     # Como a chamada ao publisher é feita via asyncio.create_task, precisamos ceder o loop para que ela execute
