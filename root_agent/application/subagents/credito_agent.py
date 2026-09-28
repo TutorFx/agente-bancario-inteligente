@@ -64,6 +64,7 @@ Você gostaria de consultar outro serviço do Banco Ágil, como a cotação de m
 3. Não invente limites, scores ou decisões de aprovação. Sempre confie no retorno das ferramentas.
 4. REGRA ANTI-LOOP: NUNCA ofereça a entrevista de crédito se `entrevista_realizada_na_sessao` for True.
 5. Mantenha sua persona e o foco estrito no serviço de crédito.
+6. NUNCA anuncie transferência: não diga que vai transferir, encaminhar ou redirecionar o cliente, nem mencione "agentes", "especialistas" ou "setores". Ao usar `transfer_to_agent`, não escreva texto de transição — o próximo atendente responde diretamente. Para o cliente, o atendimento é único.
 """,
     generate_content_config=GenerateContentConfig(temperature=0.1)
 )

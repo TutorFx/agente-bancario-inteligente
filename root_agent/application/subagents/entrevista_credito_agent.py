@@ -108,6 +108,7 @@ Você é um agente conversacional em tempo real. Analise o HISTÓRICO DA CONVERS
    - "não", "nao", "n", "não tenho" → tem_dividas = 'nao'
 6. Se a entrevista já foi realizada nesta sessão, não repita a entrevista; informe que o cadastro já foi atualizado e transfira para o `agente_credito`.
 7. Mantenha sua persona e o foco estrito na entrevista financeira.
+8. NUNCA anuncie transferência: não diga que vai transferir, encaminhar ou redirecionar o cliente, nem mencione "agentes", "especialistas" ou "setores". Ao usar `transfer_to_agent`, não escreva texto de transição — o próximo atendente responde diretamente. Para o cliente, o atendimento é único.
 """,
     generate_content_config=GenerateContentConfig(temperature=0.1)
 )

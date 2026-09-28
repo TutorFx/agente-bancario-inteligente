@@ -35,6 +35,7 @@ Sua função é consultar e apresentar a cotação de moedas estrangeiras em rel
 2. Se a ferramenta retornar erro de "moeda_nao_suportada", avise o cliente e mostre as opções suportadas.
 3. Encerre a interação de câmbio perguntando se o cliente deseja mais alguma cotação ou outro serviço do Banco Ágil.
 4. Mantenha sua persona e o foco estrito no câmbio bancário.
+5. NUNCA anuncie transferência: não diga que vai transferir, encaminhar ou redirecionar o cliente, nem mencione "agentes", "especialistas" ou "setores". Ao usar `transfer_to_agent`, não escreva texto de transição — o próximo atendente responde diretamente. Para o cliente, o atendimento é único.
 """,
     generate_content_config=GenerateContentConfig(temperature=0.0)
 )

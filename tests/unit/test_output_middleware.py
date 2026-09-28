@@ -93,3 +93,85 @@ async def test_after_model_callback_sem_texto():
     assert result is None
     assert mock_context.state == {}
 
+
+
+# --- Persona unificada: filtro de anúncios de transferência ---
+
+from root_agent.application.middlewares.output_middleware import _remover_anuncio_transferencia
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        (
+            "Vou transferir você para o especialista de crédito. Seu limite atual é R$ 5.000,00.",
+            "Seu limite atual é R$ 5.000,00.",
+        ),
+        (
+            "Estou encaminhando seu atendimento para o agente de câmbio.\nA cotação do dólar é R$ 5,10.",
+            "A cotação do dólar é R$ 5,10.",
+        ),
+        (
+            "Aguarde um momento enquanto transfiro você. Vamos começar a entrevista!",
+            "Vamos começar a entrevista!",
+        ),
+        (
+            "Certo! transfer_to_agent(agent_name='agente_credito') Qual valor você deseja?",
+            "Certo! Qual valor você deseja?",
+        ),
+        (
+            "Redirecionando para a equipe responsável... Qual moeda deseja consultar?",
+            "Qual moeda deseja consultar?",
+        ),
+    ],
+)
+def test_remover_anuncio_transferencia_corta_anuncios(texto, esperado):
+    assert _remover_anuncio_transferencia(texto) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Já encaminhamos seu comprovante para o seu e-mail cadastrado.",
+        "Estou encaminhando o comprovante da solicitação para o seu e-mail.",
+        "Vou transferir o valor para a sua conta assim que aprovado.",
+        "Aguarde um momento enquanto consulto seu limite.",
+        "Você pode encaminhar dúvidas pelo nosso 0800 123 4567.",
+    ],
+)
+def test_remover_anuncio_transferencia_preserva_conteudo_legitimo(texto):
+    assert _remover_anuncio_transferencia(texto) == texto
+
+
+def test_remover_anuncio_transferencia_nao_esvazia_resposta():
+    texto = "Vou transferir você para o especialista."
+    assert _remover_anuncio_transferencia(texto) == texto
+
+
+@pytest.mark.asyncio
+async def test_after_model_callback_remove_anuncio_e_preserva_function_call():
+    from unittest.mock import AsyncMock, patch
+
+    mock_context = MagicMock(spec=CallbackContext)
+    mock_context.state = {"is_authenticated": True}
+
+    response = LlmResponse(
+        content=types.Content(
+            role="model",
+            parts=[
+                types.Part.from_text(text="Vou te transferir para o agente de crédito. Um instante!"),
+                types.Part.from_function_call(name="transfer_to_agent", args={"agent_name": "agente_credito"}),
+            ],
+        )
+    )
+    with patch(
+        "root_agent.application.middlewares.output_middleware._validar_output_semantico",
+        new_callable=AsyncMock,
+        return_value=True,
+    ) as validador:
+        result = await after_model_callback(mock_context, response)
+
+    assert result is None
+    assert response.content.parts[0].text == "Um instante!"
+    assert response.content.parts[1].function_call.name == "transfer_to_agent"
+    validador.assert_awaited_once_with("Um instante!")
