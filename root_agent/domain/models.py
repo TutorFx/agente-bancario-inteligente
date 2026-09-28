@@ -1,10 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
-
-class BankingSubAgentInput(BaseModel):
-    cpf: str = Field(description="CPF do cliente autenticado.")
-    nome_cliente: str = Field(description="Nome do cliente autenticado.")
-    mensagem_usuario: str = Field(description="Intenção do usuário e contexto relevante da conversa.")
+from pydantic import BaseModel
+from typing import Optional
 
 class ClienteDTO(BaseModel):
     cpf: str
@@ -32,11 +27,3 @@ class CotacaoDTO(BaseModel):
     taxa: float
     timestamp: str
     erro: Optional[str] = None
-
-class EntrevistaDTO(BaseModel):
-    renda_mensal: float
-    tipo_emprego: str
-    despesas_mensais: float
-    num_dependentes: int
-    tem_dividas: bool
-    novo_score: int
