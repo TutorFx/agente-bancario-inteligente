@@ -13,6 +13,7 @@ from root_agent.domain.conversation_state import (
     ENTREVISTA_REALIZADA_KEY,
     GUARDRAIL_ENTRADA_KEY,
     GUARDRAIL_METRICAS_KEY,
+    TEXTO_ORIGINAL_USUARIO_KEY,
 )
 from root_agent.utils import get_logger
 
@@ -36,6 +37,8 @@ CHAVES_PROTEGIDAS = frozenset({
     # Um veredito forjado via stateDelta faria o turno pular o classificador de entrada
     GUARDRAIL_ENTRADA_KEY,
     GUARDRAIL_METRICAS_KEY,
+    # O texto original do turno (pré-mascaramento) alimenta o login e o guardrail de entrada
+    TEXTO_ORIGINAL_USUARIO_KEY,
 })
 
 _CAMPOS_DE_ESTADO = ("state", "stateDelta", "state_delta")

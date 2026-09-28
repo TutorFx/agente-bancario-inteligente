@@ -24,3 +24,8 @@ ENTREVISTA_REALIZADA_KEY = "entrevista_realizada_na_sessao"
 # durante a invocação (inclusive nos subagentes que recebem o turno) sem persisti-las.
 GUARDRAIL_ENTRADA_KEY = "temp:guardrail_entrada"
 GUARDRAIL_METRICAS_KEY = "temp:guardrail_metricas"
+
+# Mensagem do cliente neste turno como foi digitada, antes do mascaramento de CPF/datas feito
+# pelo MascaramentoCredenciaisPlugin: o evento persistido guarda só a versão mascarada, e o
+# original fica em memória (temp:) para a máquina de login e o guardrail de entrada.
+TEXTO_ORIGINAL_USUARIO_KEY = "temp:texto_original_usuario"

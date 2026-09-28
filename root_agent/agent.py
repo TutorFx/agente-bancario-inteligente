@@ -1,4 +1,5 @@
 from google.adk.agents import Agent
+from google.adk.apps import App
 from google.genai.types import GenerateContentConfig
 
 from root_agent.dependencies import encerrar_atendimento
@@ -11,6 +12,7 @@ from root_agent.application.subagents.fora_escopo_agent import fora_escopo_agent
 
 from root_agent.application.middlewares.input_middleware import before_model_callback
 from root_agent.application.middlewares.output_middleware import after_model_callback
+from root_agent.application.middlewares.mascaramento_plugin import MascaramentoCredenciaisPlugin
 
 root_agent = Agent(
     model=custom_model,
@@ -56,4 +58,12 @@ Sua missão principal é atuar como porta de entrada, acolher o cliente com simp
         fora_escopo_agent
     ],
     generate_content_config=GenerateContentConfig(temperature=0.1)
+)
+
+# O carregador do ADK (get_fast_api_app) procura `app` antes de `root_agent`: é por aqui que os
+# plugins de runner entram. O nome é o mesmo da pasta, usado nas rotas /apps/root_agent/...
+app = App(
+    name="root_agent",
+    root_agent=root_agent,
+    plugins=[MascaramentoCredenciaisPlugin()],
 )
