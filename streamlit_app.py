@@ -5,10 +5,16 @@ import re
 import httpx
 import streamlit as st
 
-st.set_page_config(page_title="Banco Ágil - Testes", page_icon="🏦", layout="centered")
+st.set_page_config(page_title="Banco Ágil", page_icon="🏦", layout="centered")
 
-st.title("🏦 Banco Ágil - Chat de Testes")
-st.caption("Interface de testes para validar o fluxo do Agente de Triagem e sub-agentes.")
+st.title("🏦 Banco Ágil")
+st.caption("Atendimento digital: limite de crédito, score e câmbio.")
+
+AVATARES = {"user": "🙂", "assistant": "🏦"}
+MENSAGEM_ERRO_GENERICA = (
+    "😕 Tivemos uma instabilidade ao processar sua mensagem. "
+    "Por favor, tente novamente em alguns instantes."
+)
 
 AGENT_LABELS = {
     "agente_triagem": "Agente de Triagem",
@@ -136,6 +142,10 @@ with st.sidebar:
     else:
         st.markdown("**Status de Autenticação:**\n\n🔴 **Não Autenticado**")
 
+    if st.session_state.get("ultimo_erro"):
+        st.caption("Último erro técnico:")
+        st.code(st.session_state.ultimo_erro, language=None)
+
     st.divider()
 
     if st.button("🔄 Nova Sessão / Limpar Conversa", use_container_width=True):
@@ -148,24 +158,25 @@ with st.sidebar:
         except Exception:
             pass
         limpar_chaves_autenticacao()
+        st.session_state.pop("ultimo_erro", None)
         st.session_state.session_id = f"sess_{uuid.uuid4().hex[:8]}"
         st.session_state.messages = []
         st.rerun()
 
 # Exibe o histórico de mensagens preservado
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    with st.chat_message(msg["role"], avatar=AVATARES.get(msg["role"])):
         st.markdown(msg["content"])
 
 # Entrada de nova mensagem do usuário
 if prompt := st.chat_input("Digite sua mensagem..."):
     # Renderiza e salva mensagem do usuário
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=AVATARES["user"]):
         st.markdown(prompt)
 
     # Envio para o ADK com feedback visual
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=AVATARES["assistant"]):
         with st.spinner("Processando solicitação..."):
             base_url = api_url.rstrip("/")
             payload = {
@@ -281,12 +292,11 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                     st.session_state.messages.append({"role": "assistant", "content": bot_text})
                     st.rerun()
                 else:
-                    erro_msg = f"⚠️ Erro {response.status_code}: {response.text}"
-                    st.error(erro_msg)
-                    st.session_state.messages.append({"role": "assistant", "content": erro_msg})
+                    # Detalhes técnicos ficam só na sidebar de debug; o chat recebe mensagem amigável
+                    st.session_state.ultimo_erro = f"HTTP {response.status_code}: {response.text[:500]}"
+                    st.session_state.messages.append({"role": "assistant", "content": MENSAGEM_ERRO_GENERICA})
                     st.rerun()
             except Exception as e:
-                erro_msg = f"❌ Erro ao conectar à API: {str(e)}"
-                st.error(erro_msg)
-                st.session_state.messages.append({"role": "assistant", "content": erro_msg})
+                st.session_state.ultimo_erro = f"Falha de conexão com a API: {e}"
+                st.session_state.messages.append({"role": "assistant", "content": MENSAGEM_ERRO_GENERICA})
                 st.rerun()
