@@ -18,6 +18,7 @@ from root_agent.application.middlewares.input_middleware import (
     _classificar_input_semantico,
     NivelRisco,
 )
+from root_agent.application.presenters.banking_presenter import BankingPresenter
 from root_agent.domain.models import ClienteDTO
 from root_agent.domain.conversation_state import (
     BankingConversationState,
@@ -317,6 +318,25 @@ async def test_classificador_semantico_nao_roda_novamente_apos_tool():
         res = await before_model_callback(ctx, req)
 
     assert res is None
+    mock_semantico.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_despedida_deterministica_apos_encerrar_atendimento():
+    # O Gemini costuma devolver conteúdo vazio após a tool: a despedida sai do presenter, sem LLM
+    ctx = MagicMock(spec=CallbackContext)
+    ctx.state = {"is_authenticated": False}
+    func_resp = types.FunctionResponse(name="encerrar_atendimento", response={"status": "atendimento_encerrado"})
+    req = LlmRequest(contents=[
+        types.Content(role="user", parts=[types.Part(text="obrigado, tchau!")]),
+        types.Content(role="tool", parts=[types.Part(function_response=func_resp)]),
+    ])
+
+    with patch("root_agent.application.middlewares.input_middleware._classificar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        res = await before_model_callback(ctx, req)
+
+    assert res is not None
+    assert res.content.parts[0].text == BankingPresenter.atendimento_encerrado()
     mock_semantico.assert_not_called()
 
 

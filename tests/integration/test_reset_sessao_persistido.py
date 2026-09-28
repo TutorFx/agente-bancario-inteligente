@@ -114,7 +114,8 @@ async def test_encerrar_atendimento_remove_cliente_do_estado_persistido():
     await _persistir(servico, invocacao, acoes)
 
     assert "atendimento foi encerrado" in resultado
-    assert acoes.transfer_to_agent == "agente_triagem"
+    assert acoes.transfer_to_agent is None
+    assert acoes.end_of_agent is None
     _assert_sem_autenticacao(await _estado_persistido(servico, sessao.id), CPF, NOME)
 
 

@@ -322,6 +322,13 @@ async def before_model_callback(
 
     last_content = llm_request.contents[-1] if llm_request.contents else None
     if last_content and last_content.parts and any(getattr(p, "function_response", None) for p in last_content.parts):
+        # Despedida determinística: após encerrar_atendimento o Gemini costuma devolver conteúdo
+        # vazio, e o cliente ficava sem resposta ao "tchau" (medido nos evals de encerramento)
+        if any(
+            getattr(getattr(p, "function_response", None), "name", None) == "encerrar_atendimento"
+            for p in last_content.parts
+        ):
+            return _construir_resposta(BankingPresenter.atendimento_encerrado())
         # Chamada de modelo pós-tool: a mensagem do usuário já foi validada neste turno
         return None
 

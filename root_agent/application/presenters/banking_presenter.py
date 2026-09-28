@@ -82,5 +82,12 @@ class BankingPresenter:
         )
 
     @staticmethod
+    def atendimento_encerrado() -> str:
+        return (
+            "Foi um prazer ajudar! Seu atendimento foi encerrado. 👋\n\n"
+            "Se quiser um novo atendimento, é só enviar uma mensagem ou a palavra *Menu*. *Banco Ágil* 🏦"
+        )
+
+    @staticmethod
     def encerramento() -> str:
         return "Foi um prazer ajudar! Qualquer coisa, estamos à disposição. *Banco Ágil* 🏦👋"

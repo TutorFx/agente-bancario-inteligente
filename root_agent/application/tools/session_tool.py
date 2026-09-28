@@ -29,9 +29,9 @@ def get_encerrar_atendimento_tool(publisher: Optional[IEventPublisher] = None):
             if getattr(ctx, "state", None) is not None:
                 resetar_autenticacao(ctx.state)
 
-            if hasattr(ctx, "actions") and ctx.actions:
-                ctx.actions.transfer_to_agent = "agente_triagem"
-                ctx.actions.end_of_agent = True
+            # Sem transfer_to_agent/end_of_agent: a tool só roda na triagem, e transferir para ela
+            # mesma ou encerrar o agente cortava o turno antes de o modelo escrever a despedida
+            # (os evals mostravam resposta vazia após o "tchau").
 
             _logger.info("Estado da sessão limpo com sucesso | thread_id=%s", thread_id)
 

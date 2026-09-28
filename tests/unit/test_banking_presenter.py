@@ -60,3 +60,9 @@ def test_banking_presenter_cotacao():
 def test_banking_presenter_encerramento():
     msg = BankingPresenter.encerramento()
     assert "Foi um prazer ajudar" in msg
+
+
+def test_banking_presenter_atendimento_encerrado():
+    msg = BankingPresenter.atendimento_encerrado()
+    assert "encerrado" in msg
+    assert "*Menu*" in msg
