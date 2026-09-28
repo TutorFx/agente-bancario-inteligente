@@ -35,9 +35,40 @@ def test_tools_de_negocio_bloqueadas_sem_autenticacao(tool_name):
     assert res["erro"] == "nao_autenticado"
 
 
-@pytest.mark.parametrize("tool_name", ["encerrar_atendimento", "transfer_to_agent"])
-def test_tools_publicas_liberadas_sem_autenticacao(tool_name):
-    assert before_tool_callback(tool=_tool(tool_name), args={}, tool_context=_ctx({})) is None
+def test_tools_publicas_liberadas_sem_autenticacao():
+    assert before_tool_callback(tool=_tool("encerrar_atendimento"), args={}, tool_context=_ctx({})) is None
+
+
+@pytest.mark.parametrize("destino", ["agente_triagem", "agente_fora_escopo"])
+def test_transferencia_para_agente_publico_liberada_sem_autenticacao(destino):
+    res = before_tool_callback(
+        tool=_tool("transfer_to_agent"), args={"agent_name": destino}, tool_context=_ctx({})
+    )
+    assert res is None
+
+
+@pytest.mark.parametrize("destino", ["agente_credito", "agente_entrevista_credito", "agente_cambio", None])
+def test_transferencia_para_especialista_bloqueada_sem_autenticacao(destino):
+    res = before_tool_callback(
+        tool=_tool("transfer_to_agent"), args={"agent_name": destino}, tool_context=_ctx({})
+    )
+    assert res is not None
+    assert res["erro"] == "nao_autenticado"
+
+
+def test_transferencia_para_especialista_liberada_com_autenticacao():
+    res = before_tool_callback(
+        tool=_tool("transfer_to_agent"),
+        args={"agent_name": "agente_credito"},
+        tool_context=_ctx(dict(SESSAO_AUTENTICADA)),
+    )
+    assert res is None
+
+
+def test_triagem_usa_o_guard_de_autenticacao():
+    from root_agent.agent import root_agent
+
+    assert root_agent.before_tool_callback is before_tool_callback
 
 
 def test_tool_de_negocio_liberada_com_autenticacao():

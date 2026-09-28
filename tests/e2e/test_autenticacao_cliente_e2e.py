@@ -63,7 +63,9 @@ async def test_fluxo_completo_autenticacao_sucesso(nova_conversa, mock_banco_agi
     estado = await conversa.estado()
     assert estado["is_authenticated"] is True
     assert estado["nome"] == "Carlos Silva"
-    assert estado[CLIENTE_KEY]["cpf"] == "12345678901"
+    # A sessão guarda o CPF (as tools resolvem o cliente por ele), mas a API o devolve mascarado
+    assert estado[CLIENTE_KEY]["cpf"] == "[CPF omitido]"
+    assert "12345678901" not in str(estado)
     assert estado[CONVERSATION_STATE_KEY] == BankingConversationState.AUTENTICADO.value
 
 
@@ -99,8 +101,9 @@ async def test_encerramento_atendimento_reseta_sessao_e_exige_reautenticacao(nov
 
     Chamar a tool na despedida e não transferir depois são decisões da LLM: se alguma
     divergir, a conversa inteira é repetida uma vez (com_retentativa, com aviso). As
-    invariantes garantidas pelo código (estado sem autenticação, auth_guard nas tools,
-    nenhum dado do cliente no texto) usam pytest.fail e falham na hora, sem nova tentativa.
+    invariantes garantidas pelo código (estado sem autenticação, auth_guard nas tools e nas
+    transferências, nenhum dado do cliente no texto) usam pytest.fail e falham na hora, sem
+    nova tentativa.
     A taxa real desses comportamentos é medida nos evals tchau_encerra_sessao e
     tchau_exige_nova_autenticacao.
     """
@@ -125,9 +128,16 @@ async def test_encerramento_atendimento_reseta_sessao_e_exige_reautenticacao(nov
         if (await conversa.estado()).get("is_authenticated") is True:
             pytest.fail("sessão voltou a ficar autenticada sem novo login")
 
+        # A LLM pode até tentar transferir para um especialista; o auth_guard da triagem barra a
+        # chamada (resposta nao_autenticado) e nenhuma transferência chega a acontecer
         especialistas = [t for t in consulta.transferencias if t != TRIAGEM]
-        assert not especialistas, f"transferiu sem autenticação para {especialistas}"
-        assert not consulta.tools_chamadas, f"chamou tools sem autenticação: {consulta.tools_chamadas}"
-        assert consulta.autor_final == TRIAGEM, consulta.eventos
+        if especialistas:
+            pytest.fail(f"transferiu sem autenticação para {especialistas}")
+        for nome in set(consulta.tools_chamadas):
+            for resposta in consulta.respostas_tool(nome):
+                if not (isinstance(resposta, dict) and resposta.get("erro") == "nao_autenticado"):
+                    pytest.fail(f"{nome} executou sem autenticação: {resposta}")
+        if consulta.autor_final != TRIAGEM:
+            pytest.fail(f"outro agente respondeu sem autenticação: {consulta.autor_final}")
 
     await com_retentativa(cenario)

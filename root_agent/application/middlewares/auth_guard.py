@@ -12,7 +12,12 @@ logger = get_logger("middleware.auth_guard")
 IS_AUTHENTICATED_KEY = "is_authenticated"
 
 # Tools que podem rodar sem cliente autenticado (a autenticação é feita pelo input_middleware)
-TOOLS_PUBLICAS = frozenset({"encerrar_atendimento", "transfer_to_agent"})
+TOOLS_PUBLICAS = frozenset({"encerrar_atendimento"})
+
+# Destinos de transfer_to_agent liberados sem autenticação. Os especialistas (crédito,
+# entrevista, câmbio) só recebem o turno de um cliente autenticado: o prompt da triagem
+# proíbe, mas com histórico de um login anterior a LLM ainda transferia após o "tchau".
+AGENTES_PUBLICOS = frozenset({"agente_triagem", "agente_fora_escopo"})
 
 ERRO_NAO_AUTENTICADO = {
     "erro": "nao_autenticado",
@@ -53,8 +58,13 @@ def before_tool_callback(
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> Optional[dict]:
-    """Bloqueia deterministicamente tools de negócio enquanto o cliente não estiver autenticado."""
+    """
+    Bloqueia deterministicamente tools de negócio e transferências para os agentes
+    especializados enquanto o cliente não estiver autenticado.
+    """
     if tool.name in TOOLS_PUBLICAS:
+        return None
+    if tool.name == "transfer_to_agent" and (args or {}).get("agent_name") in AGENTES_PUBLICOS:
         return None
     if cpf_do_cliente_autenticado(tool_context) is None:
         logger.warning("Tool bloqueada por falta de autenticação | tool=%s", tool.name)

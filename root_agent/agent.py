@@ -12,6 +12,7 @@ from root_agent.application.subagents.fora_escopo_agent import fora_escopo_agent
 
 from root_agent.application.middlewares.input_middleware import before_model_callback
 from root_agent.application.middlewares.output_middleware import after_model_callback
+from root_agent.application.middlewares.auth_guard import before_tool_callback
 from root_agent.application.middlewares.mascaramento_plugin import MascaramentoCredenciaisPlugin
 
 root_agent = Agent(
@@ -20,6 +21,7 @@ root_agent = Agent(
     description='Agente de Triagem do Banco Ágil. É a porta de entrada, autentica e roteia o cliente.',
     before_model_callback=before_model_callback,
     after_model_callback=after_model_callback,
+    before_tool_callback=before_tool_callback,
     instruction="""Você é o AGENTE DE TRIAGEM do Banco Ágil.
 
 Status de autenticação nesta sessão: {is_authenticated?}
