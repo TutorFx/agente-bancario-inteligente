@@ -11,7 +11,7 @@ O sistema foi desenvolvido para oferecer uma experiência de atendimento fluida 
 O projeto demonstra a aplicação prática de **Sistemas Multi-Agente (MAS)** no setor financeiro, combinando a versatilidade de Modelos de Linguagem (LLMs) com o determinismo de ferramentas de código Python para regras de crédito e integrações externas.
 
 ### 👥 Escopo e Atribuição dos Agentes
-* 🤖 **Agente de Triagem (Host/Orquestrador):** Receptáculo primário da sessão. Realiza a saudação, coleta e validação de credenciais (CPF e Data de Nascimento) contra o cadastro em `clientes.csv`, sanitizando entradas e aplicando bloqueio definitivo na 3ª falha consecutiva.
+* 🤖 **Agente de Triagem (Host/Orquestrador):** Receptáculo primário da sessão. Realiza a saudação, coleta e validação de credenciais (CPF e Data de Nascimento) contra o cadastro em `clientes.csv`, sanitizando entradas e encerrando/reiniciando a sessão na 3ª falha consecutiva.
 * 💳 **Agente de Crédito:** Responsável por consultar limites atuais, processar solicitações de alteração de limite e validar o teto permitido via matriz de risco dinâmica (`data/score_limite.csv`).
 * 🗣️ **Agente de Entrevista de Crédito:** Conduz uma entrevista financeira estruturada em 5 perguntas (Renda, Emprego, Despesas, Dependentes e Dívidas), aciona o motor determinístico de cálculo de score via Tool Python e persiste a pontuação atualizada.
 * 💱 **Agente de Câmbio:** Consulta cotações de moedas em tempo real consumindo API financeira ao vivo via chamadas assíncronas com tratamento de timeout e guardrails de pré-validação de moedas.
@@ -144,10 +144,11 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
    ```bash
    # Opção A: Clonar via Git
    git clone https://github.com/TutorFx/agente-bancario-inteligente.git
-   cd agente
+   cd agente-bancario-inteligente
 
-   # Opção B: Se baixou o arquivo .zip do GitHub, extraia-o e acesse a pasta descompactada pelo terminal:
-   cd agente
+   # Opção B: Se baixou o arquivo .zip do GitHub, extraia-o e acesse a pasta descompactada pelo terminal
+   # (o nome padrão do .zip é agente-bancario-inteligente-main):
+   cd agente-bancario-inteligente-main
    ```
 
 2. **Criar e Ativar o Ambiente Virtual:**
@@ -171,10 +172,14 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
    ```
 
 4. **Configurar Variáveis de Ambiente:**
-   Obtenha uma chave gratuita da API do Gemini em [Google AI Studio](https://aistudio.google.com/app/apikey). Em seguida, crie um arquivo chamado `.env` exatamente na raiz do projeto contendo:
+   Obtenha uma chave gratuita da API do Gemini em [Google AI Studio](https://aistudio.google.com/app/apikey). Em seguida, copie o modelo [`.env.example`](.env.example) para `.env` na raiz do projeto e preencha a chave:
+   ```bash
+   cp .env.example .env
+   ```
    ```env
    GEMINI_API_KEY=sua_chave_gemini_aqui
    ```
+   > As variáveis opcionais `LLM_MODEL_NAME`, `LLM_BASE_URL` e `LLM_API_KEY` permitem trocar o modelo/provedor via LiteLLM (padrão: `gemini/gemini-2.5-flash`).
    > 💡 **Dica (Windows):** Ao criar o arquivo pelo Bloco de Notas, certifique-se de salvar como `Todos os arquivos (*.*)` com o nome `.env`, para evitar que seja salvo incorretamente como `.env.txt`.
 
 5. **Iniciar o Servidor Backend (API / Google ADK):**
@@ -201,7 +206,7 @@ Para testar o fluxo de autenticação e os cenários dos agentes no Streamlit ou
 
 | Cliente | CPF (Com ou Sem Pontuação) | Data de Nascimento | Score Atual | Limite Atual | Conta | Cenário Sugerido |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **João Silva** *(Recomendado)* | `123.456.789-00` ou `12345678900` | `15/03/1985` | 824 | R$ 50.000,00 | 0001 | Score excelente e limite alto pré-aprovado |
+| **João Silva** *(Recomendado)* | `123.456.789-00` ou `12345678900` | `15/03/1985` | 824 | R$ 50.000,00 | 0001 | Limite atual já acima do teto da matriz para o score (R$ 10.000,00): ideal para testar recusa de aumento e oferta de entrevista |
 | **Maria Santos** | `987.654.321-00` ou `98765432100` | `22/07/1990` | 580 | R$ 2.500,00 | 0002 | Score intermediário, ideal para aumento de limite ou entrevista |
 | **Roberto Mendes** | `999.000.111-22` ou `99900011122` | `12/08/1975` | 450 | R$ 500,00 | 0009 | Score baixo, útil para testar limites e recálculo de pontuação |
 
@@ -209,7 +214,7 @@ Para testar o fluxo de autenticação e os cenários dos agentes no Streamlit ou
 > * **CPF:** `123.456.789-00`
 > * **Data de Nascimento:** `15/03/1985`
 > 
-> *Nota: O agente aceita o CPF tanto com máscara quanto apenas números. O sistema aplica bloqueio definitivo na 3ª tentativa incorreta consecutiva na mesma sessão.*
+> *Nota: O agente aceita o CPF tanto com máscara quanto apenas números. Na 3ª tentativa incorreta consecutiva, o atendimento é encerrado e a sessão é reiniciada.*
 
 ---
 
