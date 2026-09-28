@@ -1,14 +1,4 @@
-from root_agent.domain.models import ClienteDTO, CotacaoDTO
-
 class BankingPresenter:
-    @staticmethod
-    def boas_vindas() -> str:
-        return (
-            "Olá! Bem-vindo(a) ao *Banco Ágil* 🏦\n\n"
-            "Para garantir a segurança da sua conta, precisamos confirmar sua identidade.\n\n"
-            "Por favor, informe seu *CPF* (apenas números):"
-        )
-
     @staticmethod
     def solicitar_data_nascimento() -> str:
         return "Obrigado! Agora informe sua *data de nascimento* no formato DD/MM/AAAA:"
@@ -64,30 +54,8 @@ class BankingPresenter:
         )
 
     @staticmethod
-    def limite_credito(cliente: ClienteDTO) -> str:
-        return (
-            f"💳 *Seu Limite de Crédito*\n\n"
-            f"Limite Atual: R$ {cliente.limite_credito:,.2f}\n"
-            f"Score de Crédito: {cliente.score_credito}/1000\n\n"
-            "Você pode solicitar um aumento de limite se desejar."
-        )
-
-    @staticmethod
-    def cotacao(cotacao: CotacaoDTO) -> str:
-        return (
-            f"💱 *Cotação de Câmbio*\n\n"
-            f"A cotação atual do {cotacao.moeda_destino} em relação ao Real é:\n"
-            f"1 {cotacao.moeda_destino} ≈ R$ {cotacao.taxa:,.4f}\n\n"
-            f"(Cotação de referência atualizada em: {cotacao.timestamp})"
-        )
-
-    @staticmethod
     def atendimento_encerrado() -> str:
         return (
             "Foi um prazer ajudar! Seu atendimento foi encerrado. 👋\n\n"
             "Se quiser um novo atendimento, é só enviar uma mensagem ou a palavra *Menu*. *Banco Ágil* 🏦"
         )
-
-    @staticmethod
-    def encerramento() -> str:
-        return "Foi um prazer ajudar! Qualquer coisa, estamos à disposição. *Banco Ágil* 🏦👋"
