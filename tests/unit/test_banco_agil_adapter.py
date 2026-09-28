@@ -172,10 +172,15 @@ class TestCambioCotacao:
             assert cotacao.moeda_origem == "BRL"
             assert cotacao.moeda_destino == "USD"
             assert cotacao.taxa == 5.5556
+            assert cotacao.erro is None
+            assert cotacao.timestamp == "Tue, 22 Sep 2026 12:00:00 +0000"
             mock_client.get.assert_called_once_with("https://open.er-api.com/v6/latest/BRL")
 
     @pytest.mark.asyncio
-    async def test_get_cotacao_taxa_zerada_ou_inexistente(self, adapter):
+    async def test_get_cotacao_moeda_ausente_no_provedor(self, adapter):
+        """Requisição bem-sucedida, mas o provedor não retorna taxa para a moeda —
+        deve ser sinalizado como 'moeda_indisponivel_no_provedor', não como falha
+        geral de serviço."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "rates": {"USD": 0.18},
@@ -188,9 +193,11 @@ class TestCambioCotacao:
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client_cls.return_value.__aenter__.return_value = mock_client
-            cotacao = await adapter.get_cotacao("XYZ")
+            cotacao = await adapter.get_cotacao("CHF")
 
             assert cotacao.taxa == 0.0
+            assert cotacao.erro == "moeda_indisponivel_no_provedor"
+            assert cotacao.timestamp == "Tue, 22 Sep 2026 12:00:00 +0000"
 
 
 class TestAuditoriaSolicitacao:
@@ -234,6 +241,7 @@ class TestAuditoriaSolicitacao:
             cotacao = await adapter.get_cotacao("USD")
             assert cotacao.taxa == 0.0
             assert cotacao.moeda_destino == "USD"
+            assert cotacao.erro == "falha_servico_externo"
 
     @pytest.mark.asyncio
     async def test_get_cotacao_connect_error_graceful(self, adapter):
@@ -246,6 +254,7 @@ class TestAuditoriaSolicitacao:
             cotacao = await adapter.get_cotacao("EUR")
             assert cotacao.taxa == 0.0
             assert cotacao.moeda_destino == "EUR"
+            assert cotacao.erro == "falha_servico_externo"
 
     @pytest.mark.asyncio
     async def test_get_cotacao_http_status_500_graceful(self, adapter):
@@ -259,6 +268,7 @@ class TestAuditoriaSolicitacao:
 
             cotacao = await adapter.get_cotacao("USD")
             assert cotacao.taxa == 0.0
+            assert cotacao.erro == "falha_servico_externo"
 
 
 class TestConcorrenciaERaceConditions:

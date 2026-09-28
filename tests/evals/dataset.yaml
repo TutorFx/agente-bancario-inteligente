@@ -501,8 +501,8 @@ scenarios:
     turns:
       - user: "Qual a cotação do bitcoin?"
         agent: agente_cambio
-        tools: [{name: consultar_cotacao, args: {moeda_destino: BTC}}]
-        reply_matches: '612[.,]?345'
+        reply_matches: 'não (é |está )?(suportad|disponív|possível|trabalhamos|oferecemos|consigo)'
+        reply_not_matches: 'BTC\s*=|1 bitcoin'
 
   - id: cambio_moeda_invalida_rublo
     category: cambio

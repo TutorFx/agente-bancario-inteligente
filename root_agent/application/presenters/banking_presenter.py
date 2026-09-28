@@ -78,7 +78,7 @@ class BankingPresenter:
             f"💱 *Cotação de Câmbio*\n\n"
             f"A cotação atual do {cotacao.moeda_destino} em relação ao Real é:\n"
             f"1 {cotacao.moeda_destino} ≈ R$ {cotacao.taxa:,.4f}\n\n"
-            f"(Atualizado em: {cotacao.timestamp})"
+            f"(Cotação de referência atualizada em: {cotacao.timestamp})"
         )
 
     @staticmethod

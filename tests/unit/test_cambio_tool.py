@@ -40,7 +40,8 @@ async def test_consultar_cotacao_servico_indisponivel():
         moeda_origem="BRL",
         moeda_destino="EUR",
         taxa=0.0,
-        timestamp=""
+        timestamp="",
+        erro="falha_servico_externo"
     ))
     tool = get_cambio_tool(mock_adapter)
 
@@ -49,3 +50,41 @@ async def test_consultar_cotacao_servico_indisponivel():
 
     assert data["erro"] == "servico_temporariamente_indisponivel"
     assert "instabilidade" in data["mensagem"]
+
+@pytest.mark.asyncio
+async def test_consultar_cotacao_moeda_indisponivel_no_provedor():
+    """Requisição bem-sucedida, mas o provedor não retornou taxa para a moeda —
+    não deve ser confundido com falha geral de serviço."""
+    mock_adapter = MagicMock(spec=BancoAgilAdapter)
+    mock_adapter.get_cotacao = AsyncMock(return_value=CotacaoDTO(
+        moeda_origem="BRL",
+        moeda_destino="CHF",
+        taxa=0.0,
+        timestamp="Tue, 22 Sep 2026 12:00:00 +0000",
+        erro="moeda_indisponivel_no_provedor"
+    ))
+    tool = get_cambio_tool(mock_adapter)
+
+    res_str = await tool("CHF")
+    data = json.loads(res_str)
+
+    assert data["erro"] == "moeda_indisponivel_no_provedor"
+    assert "CHF" in data["mensagem"]
+
+@pytest.mark.asyncio
+async def test_consultar_cotacao_taxa_zero_sem_erro_explicito_e_tratada_como_indisponivel():
+    """Defesa em profundidade: mesmo sem `erro` setado, taxa<=0 nunca deve ser
+    repassada ao cliente como se fosse uma cotação válida."""
+    mock_adapter = MagicMock(spec=BancoAgilAdapter)
+    mock_adapter.get_cotacao = AsyncMock(return_value=CotacaoDTO(
+        moeda_origem="BRL",
+        moeda_destino="EUR",
+        taxa=0.0,
+        timestamp=""
+    ))
+    tool = get_cambio_tool(mock_adapter)
+
+    res_str = await tool("EUR")
+    data = json.loads(res_str)
+
+    assert data["erro"] == "servico_temporariamente_indisponivel"

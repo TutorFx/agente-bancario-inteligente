@@ -219,7 +219,11 @@ class BancoAgilAdapter:
         Chama API externa e retorna a cotação invertida:
         quanto custa 1 unidade da moeda_destino em BRL.
         A API retorna BRL→X, então invertemos para X→BRL.
-        Trata graciosamente erros de rede, timeout e HTTP status sem propagar exceção.
+        A cotação é de referência — a API atualiza `time_last_update_utc` uma vez por
+        dia, não em tempo real; o timestamp é repassado ao cliente sem alteração.
+        Trata graciosamente erros de rede, timeout, HTTP status e ausência da moeda
+        na resposta do provedor, sem propagar exceção. O motivo da indisponibilidade
+        (moeda ausente no provedor vs. falha de rede/HTTP) é distinguido em `erro`.
         """
         import httpx
         moeda = moeda_destino.upper()
@@ -229,18 +233,26 @@ class BancoAgilAdapter:
                 r = await client.get("https://open.er-api.com/v6/latest/BRL")
                 r.raise_for_status()
                 data = r.json()
+                timestamp = str(data.get("time_last_update_utc", ""))
                 taxa_bruta = data.get("rates", {}).get(moeda)
                 if taxa_bruta and taxa_bruta > 0:
                     taxa_invertida = round(1.0 / taxa_bruta, 4)
-                else:
-                    taxa_invertida = 0.0
-                    logger.warning("Taxa não encontrada ou zero para moeda=%s", moeda)
-                logger.info("Cotação obtida | 1 %s = R$ %.4f", moeda, taxa_invertida)
+                    logger.info("Cotação obtida | 1 %s = R$ %.4f", moeda, taxa_invertida)
+                    return CotacaoDTO(
+                        moeda_origem="BRL",
+                        moeda_destino=moeda,
+                        taxa=taxa_invertida,
+                        timestamp=timestamp
+                    )
+                # Requisição bem-sucedida, mas o provedor não retornou taxa para esta
+                # moeda (ex: removida temporariamente do feed) — não é falha de rede.
+                logger.warning("Taxa não encontrada ou zero para moeda=%s", moeda)
                 return CotacaoDTO(
                     moeda_origem="BRL",
                     moeda_destino=moeda,
-                    taxa=taxa_invertida,
-                    timestamp=str(data.get("time_last_update_utc", ""))
+                    taxa=0.0,
+                    timestamp=timestamp,
+                    erro="moeda_indisponivel_no_provedor"
                 )
         except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError, httpx.RequestError) as exc:
             logger.error("Falha de rede/HTTP ao consultar cotação para %s: %s", moeda, exc)
@@ -248,7 +260,8 @@ class BancoAgilAdapter:
                 moeda_origem="BRL",
                 moeda_destino=moeda,
                 taxa=0.0,
-                timestamp=""
+                timestamp="",
+                erro="falha_servico_externo"
             )
         except Exception as exc:
             logger.error("Erro inesperado ao consultar cotação para %s: %s", moeda, exc)
@@ -256,5 +269,6 @@ class BancoAgilAdapter:
                 moeda_origem="BRL",
                 moeda_destino=moeda,
                 taxa=0.0,
-                timestamp=""
+                timestamp="",
+                erro="falha_servico_externo"
             )
