@@ -1,13 +1,10 @@
-import asyncio
 import json
 from typing import Optional
 from root_agent.utils import get_logger
 from google.adk.agents.callback_context import CallbackContext
-from root_agent.domain.ports.event_publisher import IEventPublisher
-from root_agent.config import EVENTS_FLOW_ID
 from root_agent.domain.conversation_state import resetar_autenticacao
 
-def get_encerrar_atendimento_tool(publisher: Optional[IEventPublisher] = None):
+def get_encerrar_atendimento_tool():
     async def encerrar_atendimento(
         callback_context: Optional[CallbackContext] = None,
     ) -> str:
@@ -34,12 +31,6 @@ def get_encerrar_atendimento_tool(publisher: Optional[IEventPublisher] = None):
             # (os evals mostravam resposta vazia após o "tchau").
 
             _logger.info("Estado da sessão limpo com sucesso | thread_id=%s", thread_id)
-
-        if publisher:
-            asyncio.create_task(publisher.publish_flow_completed(
-                thread_id=thread_id,
-                flow_id=EVENTS_FLOW_ID
-            ))
 
         # Só o texto a ser dito ao cliente: uma instrução no retorno ("informe ao cliente...")
         # acabava repetida na resposta, e os evals pegaram o vazamento.

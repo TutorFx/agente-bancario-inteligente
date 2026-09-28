@@ -18,8 +18,6 @@ if LLM_API_KEY:
     os.environ["GEMINI_API_KEY"] = LLM_API_KEY
     os.environ["GOOGLE_API_KEY"] = LLM_API_KEY
 
-EVENTS_FLOW_ID = os.getenv("EVENTS_FLOW_ID", "default_flow_id")
-
 # --- Guardrails via LLM (classificador de entrada e validador de saída) ---
 # Política quando a LLM do guardrail falha (erro, timeout ou resposta fora do formato):
 #   fail_closed → bloqueia a mensagem; fail_open → segue o fluxo e registra aviso no log.

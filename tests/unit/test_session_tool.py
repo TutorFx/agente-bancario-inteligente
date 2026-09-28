@@ -1,60 +1,33 @@
 import json
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from google.adk.agents.callback_context import CallbackContext
 from root_agent.application.tools.session_tool import get_encerrar_atendimento_tool
-from root_agent.domain.ports.event_publisher import IEventPublisher
-from root_agent.config import EVENTS_FLOW_ID
 
 @pytest.mark.asyncio
-async def test_encerrar_atendimento_calls_event_publisher_and_returns_success_message():
-    # Arrange
-    mock_publisher = MagicMock(spec=IEventPublisher)
-    mock_publisher.publish_flow_completed = AsyncMock()
-    
+async def test_encerrar_atendimento_returns_success_message():
     mock_session = MagicMock()
     mock_session.id = "thread_123"
-    
+
     mock_context = MagicMock(spec=CallbackContext)
     mock_context.session = mock_session
-    
-    encerrar_atendimento = get_encerrar_atendimento_tool(mock_publisher)
-    
-    # Act
+
+    encerrar_atendimento = get_encerrar_atendimento_tool()
+
     res = await encerrar_atendimento(callback_context=mock_context)
-    
-    # Assert
+
     dados = json.loads(res)
     assert dados["status"] == "atendimento_encerrado"
     assert "palavra *Menu*" in dados["mensagem_cliente"]
     assert "Informe ao cliente" not in res
-    
-    # Como a chamada ao publisher é feita via asyncio.create_task, precisamos ceder o loop para que ela execute
-    await asyncio.sleep(0.01)
-    
-    mock_publisher.publish_flow_completed.assert_called_once_with(
-        thread_id="thread_123",
-        flow_id=EVENTS_FLOW_ID
-    )
 
 @pytest.mark.asyncio
-async def test_encerrar_atendimento_without_context_uses_unknown_thread():
-    # Arrange
-    mock_publisher = MagicMock(spec=IEventPublisher)
-    mock_publisher.publish_flow_completed = AsyncMock()
-    
-    encerrar_atendimento = get_encerrar_atendimento_tool(mock_publisher)
-    
-    # Act
+async def test_encerrar_atendimento_without_context_returns_success_message():
+    encerrar_atendimento = get_encerrar_atendimento_tool()
+
     res = await encerrar_atendimento()
-    
-    # Assert
-    await asyncio.sleep(0.01)
-    mock_publisher.publish_flow_completed.assert_called_once_with(
-        thread_id="unknown_thread",
-        flow_id=EVENTS_FLOW_ID
-    )
+
+    assert json.loads(res)["status"] == "atendimento_encerrado"
 
 @pytest.mark.asyncio
 async def test_encerrar_atendimento_clears_session_state_and_resets_agent():
