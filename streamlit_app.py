@@ -1,9 +1,13 @@
+import os
 import uuid
 import json
 import ast
 import re
 import httpx
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 st.set_page_config(page_title="Banco Ágil", page_icon="🏦", layout="centered")
 
@@ -24,7 +28,17 @@ AGENT_LABELS = {
     "agente_fora_escopo": "Agente Fora de Escopo",
 }
 
-DEFAULT_USER_ID = "user_simulacao"
+# Mesmo token configurado na API (main.py). Sem ele, a API só aceita conexões locais.
+API_TOKEN = (os.getenv("BANCO_AGIL_API_TOKEN") or "").strip()
+HEADERS_API = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
+
+
+def gerar_user_id() -> str:
+    """
+    Identificador aleatório por sessão do navegador. Com um user_id fixo para todos, a rota
+    GET /apps/root_agent/users/{user_id}/sessions listava as conversas de todos os clientes.
+    """
+    return f"web_{uuid.uuid4().hex}"
 
 def extrair_info_cliente(cliente_raw) -> dict | None:
     """Extrai informações do cliente a partir de diferentes formatos retornados pelo ADK."""
@@ -81,7 +95,7 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
 if "user_id" not in st.session_state:
-    st.session_state.user_id = DEFAULT_USER_ID
+    st.session_state.user_id = gerar_user_id()
 
 if "active_agent" not in st.session_state:
     st.session_state.active_agent = "agente_triagem"
@@ -129,6 +143,7 @@ with st.sidebar:
         try:
             httpx.delete(
                 f"{base_url}/apps/root_agent/users/{user_id}/sessions/{st.session_state.session_id}",
+                headers=HEADERS_API,
                 timeout=5.0
             )
         except Exception:
@@ -166,12 +181,12 @@ if prompt := st.chat_input("Digite sua mensagem..."):
             try:
                 # Garante que a sessão exista no ADK antes de disparar o /run
                 sess_url = f"{base_url}/apps/root_agent/users/{user_id}/sessions/{st.session_state.session_id}"
-                check_sess = httpx.get(sess_url, timeout=10.0)
+                check_sess = httpx.get(sess_url, headers=HEADERS_API, timeout=10.0)
                 if check_sess.status_code == 404:
                     create_url = f"{base_url}/apps/root_agent/users/{user_id}/sessions"
-                    httpx.post(create_url, json={"sessionId": st.session_state.session_id}, timeout=10.0).raise_for_status()
+                    httpx.post(create_url, json={"sessionId": st.session_state.session_id}, headers=HEADERS_API, timeout=10.0).raise_for_status()
 
-                response = httpx.post(f"{base_url}/run", json=payload, timeout=30.0)
+                response = httpx.post(f"{base_url}/run", json=payload, headers=HEADERS_API, timeout=30.0)
                 if response.status_code == 200:
                     data = response.json()
                     bot_text = ""
@@ -203,7 +218,7 @@ if prompt := st.chat_input("Digite sua mensagem..."):
 
                         # 2. Sincroniza estado da sessão no backend para garantir autenticação e nome atualizados
                         try:
-                            s_res = httpx.get(sess_url, timeout=5.0)
+                            s_res = httpx.get(sess_url, headers=HEADERS_API, timeout=5.0)
                             if s_res.status_code == 200:
                                 b_state = s_res.json().get("state", {})
                                 # Encerramento é sinalizado por estado (gravado por encerrar_atendimento)
@@ -245,6 +260,7 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                         try:
                             httpx.delete(
                                 f"{base_url}/apps/root_agent/users/{user_id}/sessions/{st.session_state.session_id}",
+                                headers=HEADERS_API,
                                 timeout=5.0
                             )
                         except Exception:

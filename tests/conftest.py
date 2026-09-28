@@ -6,11 +6,14 @@ from google.genai import types
 from httpx import AsyncClient, ASGITransport
 from main import app
 
+from root_agent import config
 from root_agent.application.middlewares import guardrail_llm
 
 @pytest.fixture
 async def local_client():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    # Com BANCO_AGIL_API_TOKEN no .env, a API exige o token; sem ele, o ASGITransport já é loopback
+    headers = {"Authorization": f"Bearer {config.API_TOKEN}"} if config.API_TOKEN else {}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=headers) as client:
         yield client
 
 
