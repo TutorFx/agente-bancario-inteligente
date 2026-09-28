@@ -224,15 +224,16 @@ Para testar o fluxo de autenticação e os cenários dos agentes no Streamlit ou
 
 ### 🧪 Execução da Suíte de Testes Automatizados
 
-O projeto tem uma suíte `pytest` dividida em três camadas:
+O projeto tem uma suíte `pytest` dividida em quatro camadas:
 
 | Camada | Pasta | Testes | O que cobre | Dependências externas |
 | :--- | :--- | :---: | :--- | :--- |
-| **Unitária** | `tests/unit/` | 222 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
+| **Unitária** | `tests/unit/` | 233 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
 | **Integração** | `tests/integration/` | 8 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC. Chamadas de guardrail por turno no `InMemoryRunner` do ADK, com LLMs roteirizadas | Nenhuma |
 | **E2E** | `tests/e2e/` | 6 | Autenticação e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit | Internet + `GEMINI_API_KEY` |
+| **Avaliação (evals)** | `tests/evals/` | 52 cenários | Comportamento dos agentes com a LLM real: roteamento, tools e argumentos, estado final, dados persistidos e LLM como juiz. Fica fora do `pytest` padrão (ver [seção 7](#-7-avaliação-de-agentes-evals)) | Internet + `GEMINI_API_KEY` + `deepeval` |
 
-> Números de `pytest --collect-only -q`. Após alterar a suíte, atualize a tabela com essa saída.
+> Números de `pytest --collect-only -q` (e de `pytest -m eval --collect-only -q` para os evals). Após alterar a suíte, atualize a tabela com essa saída.
 
 #### 1. Ativar o Ambiente Virtual
 Certifique-se de estar com o ambiente virtual ativo no terminal:
@@ -250,7 +251,7 @@ pytest
 
 > ⚠️ **Anotação Importante sobre a Suíte Completa:**
 > * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
-> * **Tempo de Execução:** os 236 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
+> * **Tempo de Execução:** os 247 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
 > * **Cobertura:** ~95% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 
 #### 3. Execução Rápida (Unitários + Integração, 100% Determinísticos)
@@ -260,3 +261,35 @@ Para validar lógica de negócio, middlewares, presenters, guardrails e adapter 
 pytest tests/unit/ tests/integration/
 ```
 > 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~96% de cobertura** de `root_agent` (só os unitários: ~96%), acima dos **75%** exigidos.
+
+---
+
+## 📏 7. Avaliação de agentes (evals)
+
+A cobertura de linhas mede o código Python, não o comportamento da LLM. A suíte em [`tests/evals/`](tests/evals/) mede, com a LLM real, se os agentes **roteiam para o agente certo, chamam as tools certas com os argumentos certos, deixam o estado correto e respondem sem expor a arquitetura interna**.
+
+### Como funciona
+* **Dataset** ([`tests/evals/dataset.yaml`](tests/evals/dataset.yaml)): 52 conversas roteirizadas em 9 categorias: roteamento por intenção, autenticação, recusa de aumento com oferta de entrevista, entrevista completa, correção de dado, câmbio (inclusive moeda inválida), tentativa de IDOR, jailbreak e encerramento ("tchau"). Cada turno declara o agente esperado, as tools com seus argumentos e padrões que a resposta deve ou não conter.
+* **Execução isolada** ([`harness.py`](tests/evals/harness.py)): cada conversa roda em processo no `InMemoryRunner` do ADK, sobre uma cópia temporária de `data/` e com cotações fixas no lugar da API de câmbio. Nos cenários autenticados, o login passa pelo fluxo real (CPF e data de nascimento), que não chama a LLM.
+* **Métricas determinísticas** ([`checks.py`](tests/evals/checks.py)), extraídas dos eventos do ADK:
+  * `roteamento`: agente que respondeu (`author`) e transferências (`transfer_to_agent`);
+  * `ferramentas`: tools chamadas, com os argumentos esperados, e tools proibidas no turno;
+  * `estado`: estado final da sessão (`is_authenticated`, `entrevista_realizada_na_sessao`) e score/limite persistidos em `clientes.csv`;
+  * `fidelidade_tools`: o número devolvido pela tool (ex.: `novo_score`) aparece na resposta;
+  * `resposta`: padrões obrigatórios e proibidos em cada resposta;
+  * `transicao_invisivel`: nenhuma resposta cita nomes de tools ou de agentes, instruções internas ou transferência.
+* **LLM como juiz** ([`judge.py`](tests/evals/judge.py)): três métricas G-Eval do DeepEval, com o [`CustomGeminiEvaluator`](tests/utils/custom_evaluator.py) como juiz: `juiz_tom`, `juiz_sem_mencao_agentes` e `juiz_sem_numeros_inventados` (o juiz recebe os retornos das tools como contexto).
+* **Não determinismo**: cada cenário roda `EVAL_RUNS` vezes (padrão: 3) e o relatório mostra a taxa de acerto média. O teste de um cenário passa com pelo menos 66% das execuções aprovadas; a sessão falha se alguma categoria ou métrica ficar abaixo do limiar definido no dataset (ex.: roteamento ≥ 95%, IDOR = 100%).
+
+### Como executar
+Os evals ficam fora do `pytest` padrão (marcador `eval` em `pytest.ini`) porque usam a LLM real, levam dezenas de minutos e têm custo de API:
+
+```bash
+pip install "deepeval>=4.0.6"   # juiz (DeepEval); o PyYAML já vem com o google-adk
+pytest -m eval                  # 52 cenários × 3 execuções
+EVAL_RUNS=1 pytest -m eval      # uma execução por cenário
+EVAL_JUDGE=0 pytest -m eval     # só métricas determinísticas, sem LLM juiz
+pytest -m eval -k cambio        # filtra cenários pelo id
+```
+
+O terminal mostra as taxas de acerto por categoria e por métrica. O relatório completo, com a taxa por cenário e as verificações que falharam, é gravado em `tests/evals/reports/latest.md`; as transcrições ficam em `latest.json`.
