@@ -1,21 +1,18 @@
-import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.models import LlmRequest, LlmResponse
+from google.adk.models import LlmRequest
 from google.genai import types
 
 from root_agent.application.middlewares.input_middleware import (
     before_model_callback,
     _extrair_texto_usuario,
     _mascarar_pii,
-    _construir_resposta,
     _obter_estado,
     _limpar_estado,
     _disparar_encerramento,
     _tratar_aguardando_cpf,
     _tratar_aguardando_data_nascimento,
-    _classificar_input_semantico,
     NivelRisco,
 )
 from root_agent.application.presenters.banking_presenter import BankingPresenter
@@ -84,30 +81,28 @@ def test_disparar_encerramento():
     ctx.state = {CLIENTE_KEY: "dados", "is_authenticated": True}
     ctx.actions = MagicMock()
 
-    with patch("root_agent.dependencies.encerrar_atendimento", new_callable=AsyncMock) as mock_encerrar:
-        _disparar_encerramento(ctx)
-        assert ctx.state["is_authenticated"] is False
-        assert ctx.state[CLIENTE_KEY] is None
-        assert ctx.actions.transfer_to_agent == "agente_triagem"
-        assert ctx.actions.end_of_agent is True
+    _disparar_encerramento(ctx)
+    assert ctx.state["is_authenticated"] is False
+    assert ctx.state[CLIENTE_KEY] is None
+    assert ctx.actions.transfer_to_agent == "agente_triagem"
+    assert ctx.actions.end_of_agent is True
 
 
 def test_tratar_aguardando_cpf():
     ctx = MagicMock(spec=CallbackContext)
     ctx.state = {}
-    req = _criar_user_request("olá, bom dia")
 
     # Mensagem sem dígitos é repassada para LLM
-    resp = _tratar_aguardando_cpf(ctx, "olá, bom dia", req)
+    resp = _tratar_aguardando_cpf(ctx, "olá, bom dia")
     assert resp is None
 
     # CPF com formato inválido
-    resp_invalido = _tratar_aguardando_cpf(ctx, "12345", req)
+    resp_invalido = _tratar_aguardando_cpf(ctx, "12345")
     assert resp_invalido is not None
     assert "Não identificamos um CPF válido" in resp_invalido.content.parts[0].text
 
     # CPF com formato válido
-    resp_valido = _tratar_aguardando_cpf(ctx, "123.456.789-00", req)
+    resp_valido = _tratar_aguardando_cpf(ctx, "123.456.789-00")
     assert resp_valido is not None
     assert "data de nascimento" in resp_valido.content.parts[0].text
     assert ctx.state[AUTH_CPF_TEMP_KEY] == "12345678900"

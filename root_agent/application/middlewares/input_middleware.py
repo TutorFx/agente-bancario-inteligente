@@ -1,5 +1,4 @@
 import re
-import asyncio
 from enum import Enum
 
 from root_agent.utils import get_logger, registrar_metricas
@@ -23,7 +22,6 @@ from root_agent.domain.conversation_state import (
     AUTH_TENTATIVAS_KEY,
     AUTH_CPF_TEMP_KEY,
     CLIENTE_KEY,
-    ENTREVISTA_KEY,
     ENTREVISTA_REALIZADA_KEY,
     GUARDRAIL_ENTRADA_KEY,
     TEXTO_ORIGINAL_USUARIO_KEY,
@@ -33,7 +31,6 @@ from root_agent.domain.pii import mascarar_pii
 from root_agent.application.presenters.banking_presenter import BankingPresenter
 from root_agent.domain.guardrails import (
     validar_formato_cpf,
-    validar_formato_data,
     extrair_data,
     limpar_cpf,
     MAX_TENTATIVAS_AUTH
@@ -185,7 +182,7 @@ def _disparar_encerramento(callback_context: CallbackContext) -> None:
         logger.exception("Erro ao disparar encerramento de sessão")
 
 
-def _tratar_aguardando_cpf(ctx: CallbackContext, texto: str, llm_request: LlmRequest) -> LlmResponse | None:
+def _tratar_aguardando_cpf(ctx: CallbackContext, texto: str) -> LlmResponse | None:
     # Se a mensagem do usuário não contém NENHUM número (ex: "olá", "quero ajuda"),
     # deixamos passar para o LLM, que foi instruído a responder cordialmente.
     if not any(char.isdigit() for char in texto):
@@ -372,7 +369,7 @@ async def before_model_callback(
         return _construir_resposta(BankingPresenter.solicitar_data_nascimento())
 
     if estado == BankingConversationState.AGUARDANDO_CPF:
-        return _tratar_aguardando_cpf(callback_context, texto_usuario, llm_request)
+        return _tratar_aguardando_cpf(callback_context, texto_usuario)
 
     if estado == BankingConversationState.AGUARDANDO_DATA_NASCIMENTO:
         return _tratar_aguardando_data_nascimento(callback_context, texto_usuario)
