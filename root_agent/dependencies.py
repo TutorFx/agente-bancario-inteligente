@@ -12,6 +12,7 @@ __all__ = [
     "consultar_cotacao",
     "encerrar_atendimento",
     "get_banco_agil_adapter",
+    "banco_agil_adapter",
 ]
 
 from functools import lru_cache
@@ -20,7 +21,10 @@ from functools import lru_cache
 def get_banco_agil_adapter():
     return BancoAgilAdapter()
 
-autenticar_cliente = get_autenticacao_tool(get_banco_agil_adapter())
-consultar_limite, solicitar_aumento_limite, _, calcular_e_atualizar_score = get_credito_tools(get_banco_agil_adapter())
-consultar_cotacao = get_cambio_tool(get_banco_agil_adapter())
+banco_agil_adapter = get_banco_agil_adapter()
+
+autenticar_cliente = get_autenticacao_tool(banco_agil_adapter)
+consultar_limite, solicitar_aumento_limite, _, calcular_e_atualizar_score = get_credito_tools(banco_agil_adapter)
+consultar_cotacao = get_cambio_tool(banco_agil_adapter)
 encerrar_atendimento = get_encerrar_atendimento_tool()
+
