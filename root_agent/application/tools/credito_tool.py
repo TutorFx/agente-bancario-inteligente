@@ -49,16 +49,6 @@ def get_credito_tools(adapter: BancoAgilAdapter):
         res_data["entrevista_realizada_na_sessao"] = entrevista_feita
         return json.dumps(res_data)
 
-    def atualizar_score_credito(novo_score: int, tool_context: ToolContext = None) -> str:
-        """Persiste novo score após entrevista."""
-        cpf = cpf_do_cliente_autenticado(tool_context)
-        if not cpf:
-            return json.dumps(ERRO_NAO_AUTENTICADO)
-        sucesso = adapter.atualizar_score(cpf, novo_score)
-        if sucesso:
-            return json.dumps({"sucesso": True, "novo_score": novo_score})
-        return json.dumps({"sucesso": False, "erro": "cliente_nao_encontrado"})
-
     def calcular_e_atualizar_score(
         renda_mensal: float,
         tipo_emprego: str,
@@ -107,4 +97,4 @@ def get_credito_tools(adapter: BancoAgilAdapter):
             "erro": None if sucesso else "cliente_nao_encontrado",
         })
 
-    return consultar_limite_credito, solicitar_aumento_limite, atualizar_score_credito, calcular_e_atualizar_score
+    return consultar_limite_credito, solicitar_aumento_limite, calcular_e_atualizar_score

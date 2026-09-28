@@ -21,7 +21,7 @@ def get_banco_agil_adapter():
 
 banco_agil_adapter = get_banco_agil_adapter()
 
-consultar_limite, solicitar_aumento_limite, _, calcular_e_atualizar_score = get_credito_tools(banco_agil_adapter)
+consultar_limite, solicitar_aumento_limite, calcular_e_atualizar_score = get_credito_tools(banco_agil_adapter)
 consultar_cotacao = get_cambio_tool(banco_agil_adapter)
 encerrar_atendimento = get_encerrar_atendimento_tool()
 
