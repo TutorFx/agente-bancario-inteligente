@@ -26,6 +26,7 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "deepeval>=4.0.6",
+    "pyyaml>=6.0",
     "pytest>=9.1.0",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
