@@ -96,12 +96,7 @@ async def test_encerrar_atendimento_clears_session_state_and_resets_agent():
     assert mock_context.state["entrevista_dados"] is None
     assert mock_context.state["entrevista_realizada_na_sessao"] is False
 
-    # Session dict cleanup
-    assert "cliente_autenticado" not in mock_session.state
-    assert "cpf" not in mock_session.state
-    assert "nome" not in mock_session.state
-    assert mock_session.state["is_authenticated"] is False
-    assert mock_session.state["conv_state"] == "idle"
+    assert mock_context.state["session_active"] is False
 
     # Redirection to agente_triagem
     assert mock_actions.transfer_to_agent == "agente_triagem"

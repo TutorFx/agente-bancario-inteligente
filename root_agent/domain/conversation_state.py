@@ -1,4 +1,6 @@
 from enum import Enum
+from types import MappingProxyType
+from typing import Any, MutableMapping
 
 class BankingConversationState(str, Enum):
     IDLE = "idle"
@@ -24,3 +26,31 @@ ENTREVISTA_REALIZADA_KEY = "entrevista_realizada_na_sessao"
 # durante a invocação (inclusive nos subagentes que recebem o turno) sem persisti-las.
 GUARDRAIL_ENTRADA_KEY = "temp:guardrail_entrada"
 GUARDRAIL_METRICAS_KEY = "temp:guardrail_metricas"
+
+# Estado de uma sessão sem cliente autenticado: única lista das chaves de autenticação, usada
+# pela tool encerrar_atendimento, pelo bloqueio/ATAQUE do input_middleware e pelas chaves protegidas.
+# O ADK não apaga chaves do estado: o state_delta só sobrescreve, então None é o que limpa um valor.
+ESTADO_SEM_AUTENTICACAO = MappingProxyType({
+    "is_authenticated": False,
+    CLIENTE_KEY: None,
+    "nome": None,
+    "cpf": None,
+    AUTH_CPF_TEMP_KEY: None,
+    "auth_data_temp": None,
+    AUTH_TENTATIVAS_KEY: 0,
+    "tentativas_login": 0,
+    CONVERSATION_STATE_KEY: BankingConversationState.IDLE.value,
+    ENTREVISTA_KEY: None,
+    ENTREVISTA_REALIZADA_KEY: False,
+    "session_active": False,
+})
+
+
+def resetar_autenticacao(state: MutableMapping[str, Any]) -> None:
+    """
+    Remove o cliente autenticado e as credenciais temporárias da sessão. Recebe o State do
+    contexto (tool ou callback): escrever por ele grava no state_delta do evento, que é o que o
+    SessionService persiste. Mexer no dict da sessão ou em State._delta não chega ao storage.
+    """
+    for chave, valor in ESTADO_SEM_AUTENTICACAO.items():
+        state[chave] = valor

@@ -4,7 +4,7 @@ e política de falha. A LLM do guardrail é o dublê `modelo_guardrail`, que con
 """
 
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from google.adk.agents.callback_context import CallbackContext
@@ -12,6 +12,7 @@ from google.adk.models import LlmRequest
 from google.genai import types
 
 from root_agent import config
+from root_agent.application.middlewares import input_middleware
 from root_agent.application.middlewares.input_middleware import (
     MENSAGEM_ATIVIDADE_SUSPEITA,
     _PROMPT_CLASSIFICADOR,
@@ -63,7 +64,8 @@ def _texto(resposta):
 
 @pytest.fixture
 def encerramento():
-    with patch("root_agent.dependencies.encerrar_atendimento", new_callable=AsyncMock) as mock:
+    # Espiona o encerramento sem substituí-lo: o reset do estado continua acontecendo
+    with patch.object(input_middleware, "_disparar_encerramento", wraps=input_middleware._disparar_encerramento) as mock:
         yield mock
 
 
