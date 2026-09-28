@@ -56,30 +56,6 @@ def extrair_info_cliente(cliente_raw) -> dict | None:
             return {"nome": m.group(1)}
     return None
 
-def limpar_mensagens_transferencia(texto: str) -> str:
-    """
-    Remove mensagens internas de transferência ou menções técnicas de agentes,
-    assegurando a persona unificada do Banco Ágil (transição implícita).
-    """
-    if not texto:
-        return ""
-    
-    padroes = [
-        r"(?i)(?:transferindo|encaminhando|redirecionando)\s+(?:o\s+)?(?:seu\s+)?(?:atendimento|contato)?\s*(?:para\s+o?\s*(?:agente|sub-agente|especialista)?[^.\n]*)?[.!\s]*",
-        r"(?i)vou\s+(?:te\s+|lhe\s+)?transferir\s+para\s+[^.\n]*[.!\s]*",
-        r"(?i)aguarde\s+(?:um\s+instante|um\s+momento)\s*(?:enquanto\s+transfiro)?[^.\n]*[.!\s]*",
-        r"(?i)transfer_to_agent\([^)]*\)",
-        r"(?i)\b(?:agente_triagem|agente_credito|agente_entrevista_credito|agente_cambio|agente_fora_escopo)\b",
-    ]
-    
-    resultado = texto
-    for p in padroes:
-        resultado = re.sub(p, "", resultado)
-    
-    resultado = re.sub(r"^[\s.\-,!?:;]+", "", resultado)
-    resultado = re.sub(r"\n\s*\n", "\n\n", resultado).strip()
-    return resultado or texto.strip()
-
 def limpar_chaves_autenticacao():
     """Limpa todas as chaves de autenticação do st.session_state."""
     auth_keys = [
@@ -202,7 +178,7 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                     encerrou_sessao = False
 
                     if isinstance(data, list) and len(data) > 0:
-                        # 1. Atualiza telemetria de agente ativo e encerramento
+                        # 1. Atualiza telemetria de agente ativo e sinal de encerramento (stateDelta)
                         for ev in data:
                             actions = ev.get("actions") or {}
                             if isinstance(actions, dict):
@@ -210,6 +186,8 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                                     st.session_state.active_agent = actions["transferToAgent"]
                                 state_delta = actions.get("stateDelta") or {}
                                 if isinstance(state_delta, dict):
+                                    if state_delta.get("session_active") is False:
+                                        encerrou_sessao = True
                                     if state_delta.get("is_authenticated") is True:
                                         st.session_state.is_authenticated = True
                                         c_info = extrair_info_cliente(state_delta.get("cliente_autenticado"))
@@ -223,19 +201,14 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                             if author and author not in ("user", "system"):
                                 st.session_state.active_agent = author
 
-                            parts = ev.get("content", {}).get("parts", []) if isinstance(ev.get("content"), dict) else []
-                            for p in parts:
-                                fn_call = p.get("functionCall") or p.get("function_call")
-                                fn_resp = p.get("functionResponse") or p.get("function_response")
-                                if (fn_call and fn_call.get("name") == "encerrar_atendimento") or \
-                                   (fn_resp and fn_resp.get("name") == "encerrar_atendimento"):
-                                    encerrou_sessao = True
-
                         # 2. Sincroniza estado da sessão no backend para garantir autenticação e nome atualizados
                         try:
                             s_res = httpx.get(sess_url, timeout=5.0)
                             if s_res.status_code == 200:
                                 b_state = s_res.json().get("state", {})
+                                # Encerramento é sinalizado por estado (gravado por encerrar_atendimento)
+                                if b_state.get("session_active") is False:
+                                    encerrou_sessao = True
                                 if b_state.get("is_authenticated"):
                                     st.session_state.is_authenticated = True
                                     c_info = extrair_info_cliente(b_state.get("cliente_autenticado"))
@@ -247,7 +220,7 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                         except Exception:
                             pass
 
-                        # 3. Extração da resposta textual com persona unificada (última resposta do modelo)
+                        # 3. Extração da resposta textual (a persona unificada é garantida no backend)
                         for ev in reversed(data):
                             if ev.get("author") == st.session_state.active_agent:
                                 p_list = ev.get("content", {}).get("parts", []) if isinstance(ev.get("content"), dict) else []
@@ -264,19 +237,8 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                                     bot_text = t
                                     break
 
-                    # Limpa mensagens técnicas ou de transferência para persona unificada
-                    bot_text = limpar_mensagens_transferencia(bot_text)
-
                     if not bot_text:
                         bot_text = "*(Resposta sem conteúdo textual recebida)*"
-
-                    # Detecção adicional de encerramento via texto
-                    text_lower = bot_text.lower()
-                    if "atendimento foi encerrado" in text_lower or \
-                       "atendimento encerrado" in text_lower or \
-                       "0800 123 4567" in text_lower or \
-                       "sessão finalizada" in text_lower:
-                        encerrou_sessao = True
 
                     if encerrou_sessao:
                         limpar_chaves_autenticacao()
