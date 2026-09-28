@@ -31,6 +31,7 @@ class CotacaoDTO(BaseModel):
     moeda_destino: str
     taxa: float
     timestamp: str
+    erro: Optional[str] = None
 
 class EntrevistaDTO(BaseModel):
     renda_mensal: float

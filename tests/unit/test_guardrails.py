@@ -66,7 +66,8 @@ def test_extrair_data():
 def test_validar_moeda():
     assert validar_moeda("USD") is True
     assert validar_moeda("eur") is True
-    assert validar_moeda("BTC") is True
+    assert validar_moeda("CHF") is True
+    assert validar_moeda("BTC") is False  # sem taxa no provedor open.er-api.com
     assert validar_moeda("XYZ") is False
 
 def test_validar_aumento_limite():
