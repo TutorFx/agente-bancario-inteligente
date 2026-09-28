@@ -64,6 +64,25 @@ async def test_after_model_callback_aguardando_data_nascimento():
 
 
 @pytest.mark.asyncio
+async def test_after_model_callback_nao_reabre_login_quando_autenticado():
+    from unittest.mock import AsyncMock, patch
+
+    mock_context = MagicMock(spec=CallbackContext)
+    mock_context.state = {"is_authenticated": True, CONVERSATION_STATE_KEY: "autenticado"}
+
+    response = _criar_llm_response("Consultei o limite vinculado ao seu CPF: R$ 5.000,00.")
+    with patch(
+        "root_agent.application.middlewares.output_middleware._validar_output_semantico",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        result = await after_model_callback(mock_context, response)
+
+    assert result is None
+    assert mock_context.state[CONVERSATION_STATE_KEY] == "autenticado"
+
+
+@pytest.mark.asyncio
 async def test_after_model_callback_sem_texto():
     mock_context = MagicMock(spec=CallbackContext)
     mock_context.state = {}

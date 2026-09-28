@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from google.adk.agents.callback_context import CallbackContext
@@ -201,6 +202,105 @@ async def test_before_model_callback_prompt_injection_semantico():
             res = await before_model_callback(ctx, req)
             assert res is not None
             assert "Atividade suspeita detectada" in res.content.parts[0].text
+
+
+def _request_com_resposta_auth(response) -> LlmRequest:
+    func_resp = types.FunctionResponse(name="autenticar_cliente", response=response)
+    return LlmRequest(contents=[types.Content(role="tool", parts=[types.Part(function_response=func_resp)])])
+
+
+@pytest.mark.asyncio
+async def test_autenticacao_formato_real_do_adk_json_em_result():
+    """O ADK encapsula o retorno string da tool como {"result": "<json>"}."""
+    ctx = MagicMock(spec=CallbackContext)
+    ctx.state = {AUTH_TENTATIVAS_KEY: 0, AUTH_CPF_TEMP_KEY: "12345678900", "auth_data_temp": "15/03/1985"}
+    payload = json.dumps({"autenticado": True, "cliente": {
+        "cpf": "12345678900", "nome": "João Silva", "data_nascimento": "15/03/1985",
+        "score_credito": 824, "limite_credito": 50000.0, "conta": "0001",
+    }})
+
+    resultado = await before_model_callback(ctx, _request_com_resposta_auth({"result": payload}))
+
+    assert resultado is None
+    assert ctx.state["is_authenticated"] is True
+    assert ctx.state[CLIENTE_KEY] == {"cpf": "12345678900", "nome": "João Silva", "conta": "0001"}
+    # Credenciais temporárias e data de nascimento não permanecem no estado
+    assert ctx.state[AUTH_CPF_TEMP_KEY] is None
+    assert ctx.state["auth_data_temp"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("response", [
+    {"error": "Invoking `autenticar_cliente()` failed as the following mandatory input parameters are not present:\ndata_nascimento"},
+    {"result": "resposta inesperada"},
+    {"autenticado": True},
+    {},
+])
+async def test_autenticacao_fail_closed_em_retorno_inesperado(response):
+    ctx = MagicMock(spec=CallbackContext)
+    ctx.state = {AUTH_TENTATIVAS_KEY: 0}
+
+    resultado = await before_model_callback(ctx, _request_com_resposta_auth(response))
+
+    assert resultado is not None
+    assert ctx.state["is_authenticated"] is False
+    assert ctx.state[CLIENTE_KEY] is None
+    # Erro técnico não consome tentativa do cliente
+    assert ctx.state[AUTH_TENTATIVAS_KEY] == 0
+    assert ctx.state[CONVERSATION_STATE_KEY] == BankingConversationState.AGUARDANDO_CPF
+
+
+@pytest.mark.asyncio
+async def test_cliente_autenticado_nao_tem_mensagem_numerica_tratada_como_cpf():
+    ctx = MagicMock(spec=CallbackContext)
+    ctx.state = {
+        "is_authenticated": True,
+        CONVERSATION_STATE_KEY: BankingConversationState.AGUARDANDO_CPF.value,
+    }
+    req = _criar_user_request("quero aumentar meu limite para 8000")
+
+    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        mock_semantico.return_value = True
+        res = await before_model_callback(ctx, req)
+
+    assert res is None
+    assert req.contents[0].parts[0].text == "quero aumentar meu limite para 8000"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("texto", [
+    "qual o código do banco?",
+    "comprei um remédio na Drogasil",
+    "tenho um script de cobrança recebido por email, é golpe?",
+])
+async def test_regex_nao_encerra_mensagens_bancarias_legitimas(texto):
+    ctx = MagicMock(spec=CallbackContext)
+    ctx.state = {"is_authenticated": True}
+    ctx.actions = MagicMock()
+
+    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        mock_semantico.return_value = True
+        res = await before_model_callback(ctx, _criar_user_request(texto))
+
+    assert res is None
+    assert ctx.state["is_authenticated"] is True
+
+
+@pytest.mark.asyncio
+async def test_classificador_semantico_nao_roda_novamente_apos_tool():
+    ctx = MagicMock(spec=CallbackContext)
+    ctx.state = {"is_authenticated": True}
+    func_resp = types.FunctionResponse(name="consultar_limite_credito", response={"result": "{}"})
+    req = LlmRequest(contents=[
+        types.Content(role="user", parts=[types.Part(text="qual meu limite?")]),
+        types.Content(role="tool", parts=[types.Part(function_response=func_resp)]),
+    ])
+
+    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        res = await before_model_callback(ctx, req)
+
+    assert res is None
+    mock_semantico.assert_not_called()
 
 
 @pytest.mark.asyncio
