@@ -15,7 +15,8 @@ from root_agent.application.middlewares.input_middleware import (
     _disparar_encerramento,
     _tratar_aguardando_cpf,
     _tratar_aguardando_data_nascimento,
-    _validar_input_semantico,
+    _classificar_input_semantico,
+    NivelRisco,
 )
 from root_agent.domain.models import ClienteDTO
 from root_agent.domain.conversation_state import (
@@ -195,8 +196,8 @@ async def test_bloqueio_apos_3_tentativas_invalidas():
     patcher, adapter = _mock_adapter(None)
 
     with patcher, patch(
-        "root_agent.application.middlewares.input_middleware._validar_input_semantico",
-        new_callable=AsyncMock, return_value=True,
+        "root_agent.application.middlewares.input_middleware._classificar_input_semantico",
+        new_callable=AsyncMock, return_value=NivelRisco.SEGURO,
     ), patch("root_agent.dependencies.encerrar_atendimento", new_callable=AsyncMock):
         for tentativa, restantes in ((1, "2 tentativa(s)"), (2, "1 tentativa(s)")):
             _, resp = await _turno(ctx, historico, "111.222.333-44")
@@ -217,32 +218,33 @@ async def test_bloqueio_apos_3_tentativas_invalidas():
 
 
 @pytest.mark.asyncio
-async def test_nenhum_llm_request_contem_cpf_ou_data_de_nascimento():
+async def test_nenhum_llm_request_contem_cpf_ou_data_de_nascimento(modelo_guardrail):
     """Critério de aceite T2: credenciais nunca chegam ao provedor da LLM em nenhum ponto do fluxo."""
     ctx = MagicMock(spec=CallbackContext)
     ctx.state = {}
     ctx.actions = MagicMock()
     historico = []
-    requests_para_llm = []
-
-    async def classificador(request):
-        requests_para_llm.append(request)
-        return LlmResponse(content=types.Content(role="model", parts=[types.Part(text="SEGURO")]))
+    requests_para_agente = []
+    classificador = modelo_guardrail("SEGURO")
 
     patcher, _ = _mock_adapter(CLIENTE_TESTE)
-    modelo = MagicMock()
-    modelo.generate_content_async = AsyncMock(side_effect=classificador)
-    with patcher, patch("root_agent.application.middlewares.input_middleware.custom_model", modelo):
-        for texto in ("Olá, bom dia!", "Meu CPF é 123.456.789-01", "nasci em 15/03/1985",
-                      "qual meu limite?", "meu cpf é 12345678901 e nasci em 15-03-1985, certo?"):
+    with patcher:
+        for i, texto in enumerate(("Olá, bom dia!", "Meu CPF é 123.456.789-01", "nasci em 15/03/1985",
+                                   "qual meu limite?", "meu cpf é 12345678901 e nasci em 15-03-1985, certo?")):
+            # Como no ADK: cada mensagem é um turno novo e o classificador lê o user_content sem máscara
+            ctx.invocation_id = f"turno-{i}"
+            ctx.user_content = types.Content(role="user", parts=[types.Part(text=texto)])
             req, resp = await _turno(ctx, historico, texto)
             if resp is None:
                 # O request seguiu para o modelo do agente
-                requests_para_llm.append(req)
+                requests_para_agente.append(req)
             else:
                 assert "12345678901" not in resp.content.parts[0].text
 
     assert ctx.state["is_authenticated"] is True
+    # Todas as mensagens têm letras: o classificador roda em todos os turnos
+    assert classificador.chamadas == 5
+    requests_para_llm = requests_para_agente + classificador.requisicoes
     assert len(requests_para_llm) >= 7
     for req in requests_para_llm:
         serializado = req.model_dump_json()
@@ -269,8 +271,8 @@ async def test_cliente_autenticado_nao_tem_mensagem_numerica_tratada_como_cpf():
     }
     req = _criar_user_request("quero aumentar meu limite para 8000")
 
-    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
-        mock_semantico.return_value = True
+    with patch("root_agent.application.middlewares.input_middleware._classificar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        mock_semantico.return_value = NivelRisco.SEGURO
         res = await before_model_callback(ctx, req)
 
     assert res is None
@@ -288,8 +290,8 @@ async def test_regex_nao_encerra_mensagens_bancarias_legitimas(texto):
     ctx.state = {"is_authenticated": True}
     ctx.actions = MagicMock()
 
-    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
-        mock_semantico.return_value = True
+    with patch("root_agent.application.middlewares.input_middleware._classificar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        mock_semantico.return_value = NivelRisco.SEGURO
         res = await before_model_callback(ctx, _criar_user_request(texto))
 
     assert res is None
@@ -306,7 +308,7 @@ async def test_classificador_semantico_nao_roda_novamente_apos_tool():
         types.Content(role="tool", parts=[types.Part(function_response=func_resp)]),
     ])
 
-    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+    with patch("root_agent.application.middlewares.input_middleware._classificar_input_semantico", new_callable=AsyncMock) as mock_semantico:
         res = await before_model_callback(ctx, req)
 
     assert res is None
@@ -319,8 +321,8 @@ async def test_before_model_callback_cpf_direto_em_idle():
     ctx.state = {CONVERSATION_STATE_KEY: BankingConversationState.IDLE.value}
     req = _criar_user_request("123.456.789-00")
 
-    with patch("root_agent.application.middlewares.input_middleware._validar_input_semantico", new_callable=AsyncMock) as mock_semantico:
-        mock_semantico.return_value = True
+    with patch("root_agent.application.middlewares.input_middleware._classificar_input_semantico", new_callable=AsyncMock) as mock_semantico:
+        mock_semantico.return_value = NivelRisco.SEGURO
         res = await before_model_callback(ctx, req)
         assert res is not None
         assert "data de nascimento" in res.content.parts[0].text

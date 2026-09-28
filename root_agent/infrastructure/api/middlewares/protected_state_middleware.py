@@ -11,6 +11,8 @@ from root_agent.domain.conversation_state import (
     CONVERSATION_STATE_KEY,
     ENTREVISTA_KEY,
     ENTREVISTA_REALIZADA_KEY,
+    GUARDRAIL_ENTRADA_KEY,
+    GUARDRAIL_METRICAS_KEY,
 )
 from root_agent.utils import get_logger
 
@@ -31,6 +33,9 @@ CHAVES_PROTEGIDAS = frozenset({
     "cpf",
     "nome",
     "tentativas_login",
+    # Um veredito forjado via stateDelta faria o turno pular o classificador de entrada
+    GUARDRAIL_ENTRADA_KEY,
+    GUARDRAIL_METRICAS_KEY,
 })
 
 _CAMPOS_DE_ESTADO = ("state", "stateDelta", "state_delta")

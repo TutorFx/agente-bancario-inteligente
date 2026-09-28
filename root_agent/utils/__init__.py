@@ -24,3 +24,13 @@ def get_logger(name: str) -> logging.Logger:
         logger.setLevel(getattr(logging, level, logging.INFO))
 
     return logger
+
+
+def registrar_metricas(logger: logging.Logger, evento: str, nivel_log: int = logging.INFO, **campos) -> None:
+    """
+    Registra métricas em uma única linha no formato chave=valor, fácil de filtrar (grep)
+    ou de ingerir em ferramentas de log.
+
+    Ex.: guardrail.llm | guardrail=entrada turno=e-123 latencia_ms=812 chamadas_turno=1
+    """
+    logger.log(nivel_log, "%s | %s", evento, " ".join(f"{chave}={valor}" for chave, valor in campos.items()))

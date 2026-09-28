@@ -46,6 +46,13 @@ class BankingPresenter:
         )
 
     @staticmethod
+    def verificacao_seguranca_indisponivel() -> str:
+        return (
+            "😕 Não conseguimos concluir a verificação de segurança da sua mensagem agora.\n\n"
+            "Por favor, tente novamente em alguns instantes."
+        )
+
+    @staticmethod
     def autenticacao_sucesso(nome: str) -> str:
         return (
             f"✅ Identidade confirmada! Olá, *{nome}*!\n\n"
