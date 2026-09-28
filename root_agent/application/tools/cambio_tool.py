@@ -12,5 +12,10 @@ def get_cambio_tool(adapter: BancoAgilAdapter):
             return json.dumps({"erro": "moeda_nao_suportada",
                                "suportadas": list(MOEDAS_SUPORTADAS)})
         cotacao = await adapter.get_cotacao(moeda_destino)
+        if cotacao.taxa <= 0.0:
+            return json.dumps({
+                "erro": "servico_temporariamente_indisponivel",
+                "mensagem": "Não foi possível obter a cotação no momento devido a instabilidade no serviço externo. Por favor, tente novamente em alguns instantes."
+            })
         return json.dumps(cotacao.model_dump())
     return consultar_cotacao
