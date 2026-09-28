@@ -37,3 +37,5 @@ htmlcov/
 .adk/
 root_agent/.adk/
 
+# Relatórios gerados pela suíte de avaliação de agentes (pytest -m eval)
+tests/evals/reports/
