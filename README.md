@@ -70,13 +70,13 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
 
 ## 🚀 3. Funcionalidades Implementadas
 
-- [x] **Autenticação Segura:** Sanitização de CPF e validação contra `clientes.csv`, com limite de 3 tentativas incorretas por sessão.
-- [x] **Matriz Dinâmica de Crédito:** Concessão parametrizada via `score_limite.csv` por faixas de pontuação, eliminando condicionais fixas (*hardcoded*).
-- [x] **Modelo Ponderado por Categoria:** Cálculo de score calibrado com tetos individuais por componente (Renda, Emprego, Comprometimento, Dependentes e Dívidas), limitando o intervalo estritamente entre 0 e 1000 pontos.
-- [x] **Trilha de Auditoria Regulatória:** Registro append-only de todas as transações de crédito com carimbo de data/hora em ISO 8601 UTC.
-- [x] **Consultas de Câmbio em Tempo Real:** Chamadas assíncronas (`httpx`) à API do ExchangeRate com guardrails para validação prévia de moedas suportadas.
-- [x] **Transição Implícita de Agentes:** Roteamento transparente no Google ADK, acompanhado por um painel lateral de telemetria para o avaliador no Streamlit.
-- [x] **Reset de Sessão & Proteção PII:** Limpeza completa do estado e expurgamento de chaves no encerramento ("tchau"), com mensagens de erro que utilizam exemplos estáticos para evitar vazamento de dados de clientes.
+- [x] **Autenticação Segura:** Sanitização de CPF e validação contra `clientes.csv`, com limite de 3 tentativas incorretas por sessão. *Testes:* `tests/unit/test_input_middleware.py`.
+- [x] **Matriz Dinâmica de Crédito:** Concessão parametrizada via `score_limite.csv` por faixas de pontuação, eliminando condicionais fixas (*hardcoded*). *Testes:* `tests/integration/test_credito_adapter_integration.py`.
+- [x] **Modelo Ponderado por Categoria:** Cálculo de score calibrado com tetos individuais por componente (Renda, Emprego, Comprometimento, Dependentes e Dívidas), limitando o intervalo estritamente entre 0 e 1000 pontos. *Testes:* `tests/unit/test_guardrails.py`.
+- [x] **Trilha de Auditoria Regulatória:** Registro append-only de todas as transações de crédito com carimbo de data/hora em ISO 8601 UTC (`data/solicitacoes_aumento_limite.csv`). *Testes:* `tests/integration/test_credito_adapter_integration.py`.
+- [x] **Consultas de Câmbio em Tempo Real:** Chamadas assíncronas (`httpx`) à API do ExchangeRate com guardrails para validação prévia de moedas suportadas. *Testes:* `tests/unit/test_cambio_tool.py` e `tests/unit/test_banco_agil_adapter.py`.
+- [x] **Transição Implícita de Agentes:** Roteamento transparente no Google ADK, acompanhado por um painel lateral de telemetria para o avaliador no Streamlit (`st.sidebar` em `streamlit_app.py`).
+- [x] **Reset de Sessão & Proteção PII:** Limpeza completa do estado e expurgamento de chaves no encerramento ("tchau"), com mensagens de erro que utilizam exemplos estáticos (`BankingPresenter`) para evitar vazamento de dados de clientes. *Testes:* `tests/unit/test_session_tool.py` e `tests/unit/test_banking_presenter.py`.
 
 ---
 
@@ -87,10 +87,10 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
    * *Solução:* Migração para um modelo ponderado por categoria em `guardrails.py` com teto máximo individual por componente, comprovado via teste de borda unitário.
 2. **Condições de Corrida no I/O do Streamlit:**
    * *Desafio:* Múltiplas requisições simultâneas causavam *lost updates* e arquivos CSV vazios durante sobrescritas.
-   * *Solução:* Implementação de `FileLock` e gravação em arquivo temporário com substituição atômica (`os.replace`).
+   * *Solução:* Implementação de `FileLock` e gravação em arquivo temporário com substituição atômica (`os.replace`). *Testes:* escrita atômica e concorrência com `ThreadPoolExecutor` em `tests/unit/test_banco_agil_adapter.py`.
 3. **Persistência de Sessão Pós-Despedida:**
    * *Desafio:* Enviar mensagens de encerramento mantinha o estado autenticado ativo para perguntas subsequentes.
-   * *Solução:* Criação do mecanismo de reset síncrono que expurga as chaves de autenticação do `tool_context.state` e gera novo ID de sessão no Streamlit.
+   * *Solução:* Criação do mecanismo de reset síncrono que expurga as chaves de autenticação do `tool_context.state` (`session_tool.py`) e gera novo ID de sessão no Streamlit (`streamlit_app.py`). *Testes:* `tests/unit/test_session_tool.py`.
 
 ---
 
@@ -220,7 +220,15 @@ Para testar o fluxo de autenticação e os cenários dos agentes no Streamlit ou
 
 ### 🧪 Execução da Suíte de Testes Automatizados
 
-O projeto conta com uma suíte abrangente de testes unitários, de integração, de concorrência e de borda desenvolvida com `pytest`.
+O projeto tem uma suíte `pytest` dividida em três camadas:
+
+| Camada | Pasta | Testes | O que cobre | Dependências externas |
+| :--- | :--- | :---: | :--- | :--- |
+| **Unitária** | `tests/unit/` | 133 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
+| **Integração** | `tests/integration/` | 6 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC | Nenhuma |
+| **E2E** | `tests/e2e/` | 6 | Autenticação e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit | Internet + `GEMINI_API_KEY` |
+
+> Números de `pytest --collect-only -q`. Após alterar a suíte, atualize a tabela com essa saída.
 
 #### 1. Ativar o Ambiente Virtual
 Certifique-se de estar com o ambiente virtual ativo no terminal:
@@ -237,14 +245,14 @@ pytest
 *(Ou explicitamente: `pytest --cov=root_agent --cov-report=term-missing`)*
 
 > ⚠️ **Anotação Importante sobre a Suíte Completa:**
-> * **Chamadas E2E Reais:** A suíte inclui testes ponta a ponta (`tests/e2e/`) que exercitam o fluxo completo do agente integrando com o modelo Gemini. Por isso, a execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
-> * **Tempo de Execução:** A bateria completa com 39 testes leva aproximadamente **40 a 50 segundos** para concluir.
-> * **Garantia de Qualidade:** A suíte valida 100% dos caminhos do motor de crédito (`guardrails.py`) e atinge **~85% de cobertura global**, superando com folga o limiar mínimo obrigatório de **75%** (`--cov-fail-under=75`).
+> * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
+> * **Tempo de Execução:** os 145 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
+> * **Cobertura:** ~95% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 
-#### 3. Execução Rápida (Apenas Testes Unitários - 100% Determinísticos)
-Para validar toda a lógica de negócio, middlewares, presenters, guardrails e adapters instantaneamente (em ~1 segundo), sem depender de conexão de internet ou chaves de LLM:
+#### 3. Execução Rápida (Unitários + Integração, 100% Determinísticos)
+Para validar lógica de negócio, middlewares, presenters, guardrails e adapter em ~1 segundo, sem internet nem chave de LLM:
 
 ```bash
-pytest tests/unit/
+pytest tests/unit/ tests/integration/
 ```
-> 🎯 **Cobertura Unitária Isolada:** Apenas os testes unitários já atingem **~91% de cobertura de código** (`root_agent`), superando a exigência de **75%** sem qualquer dependência externa ou não-determinismo.
+> 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~93% de cobertura** de `root_agent` (só os unitários: ~92%), acima dos **75%** exigidos.
