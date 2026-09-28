@@ -85,8 +85,7 @@ async def after_model_callback(
     gerado pela LLM (quando o agente pede CPF ou data de nascimento).
 
     NOTA: O controle de tentativas de autenticação é gerenciado
-    EXCLUSIVAMENTE pelo input_middleware (interceptando o function_response
-    de autenticar_cliente). Não duplicar essa lógica aqui.
+    EXCLUSIVAMENTE pelo input_middleware (que autentica direto no adapter). Não duplicar essa lógica aqui.
     """
     texto = _extrair_texto_resposta(llm_response)
     if not texto:

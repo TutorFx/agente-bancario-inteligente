@@ -35,7 +35,7 @@ def test_tools_de_negocio_bloqueadas_sem_autenticacao(tool_name):
     assert res["erro"] == "nao_autenticado"
 
 
-@pytest.mark.parametrize("tool_name", ["autenticar_cliente", "encerrar_atendimento", "transfer_to_agent"])
+@pytest.mark.parametrize("tool_name", ["encerrar_atendimento", "transfer_to_agent"])
 def test_tools_publicas_liberadas_sem_autenticacao(tool_name):
     assert before_tool_callback(tool=_tool(tool_name), args={}, tool_context=_ctx({})) is None
 
