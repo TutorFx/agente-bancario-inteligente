@@ -2,7 +2,7 @@ import asyncio
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncIterator
 
 from root_agent.utils import get_logger
 from root_agent.infrastructure.api.queue.session_queue_port import SessionQueuePort
@@ -47,7 +47,7 @@ class MemorySessionQueue(SessionQueuePort):
         return lock
 
     @asynccontextmanager
-    async def acquire(self, session_id: str) -> AsyncGenerator[None, None]:
+    async def acquire(self, session_id: str) -> AsyncIterator[None]:
         lock = self._get_or_create_lock(session_id)
         async with lock:
             # Semáforo global atua como um Bottleneck limitando o tráfego total

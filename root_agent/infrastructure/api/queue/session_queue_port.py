@@ -1,5 +1,5 @@
-from typing import Protocol, AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager
+from typing import Protocol
 
 class SessionQueuePort(Protocol):
     """
@@ -7,8 +7,7 @@ class SessionQueuePort(Protocol):
     por sessão/usuário.
     """
     
-    @asynccontextmanager
-    async def acquire(self, session_id: str) -> AsyncGenerator[None, None]:
+    def acquire(self, session_id: str) -> AbstractAsyncContextManager[None]:
         """
         Adquire um lock para o session_id e gerencia o throughput (ex: 2/segundo).
         Garante que requisições concorrentes sejam enfileiradas ou descartadas.

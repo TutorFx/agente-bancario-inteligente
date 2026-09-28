@@ -130,6 +130,7 @@ class RedacaoPiiMiddleware:
                 corpo.extend(message.get("body", b""))
                 if mais:
                     return
+                assert inicio is not None  # modo "json" só é definido junto com inicio
                 redigido = _redigir_bytes_json(bytes(corpo))
                 headers = MutableHeaders(raw=inicio["headers"])
                 headers["content-length"] = str(len(redigido))
