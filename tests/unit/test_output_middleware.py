@@ -34,12 +34,15 @@ def test_extrair_texto_resposta_invalido():
     assert _extrair_texto_resposta(mock_resp) is None
 
 
-def test_after_model_callback_aguardando_cpf():
+import pytest
+
+@pytest.mark.asyncio
+async def test_after_model_callback_aguardando_cpf():
     mock_context = MagicMock(spec=CallbackContext)
     mock_context.state = {}
 
     response = _criar_llm_response("Por favor, informe o seu CPF para prosseguir.")
-    result = after_model_callback(mock_context, response)
+    result = await after_model_callback(mock_context, response)
 
     assert result is None
     assert mock_context.state.get(CONVERSATION_STATE_KEY) == BankingConversationState.AGUARDANDO_CPF
@@ -47,24 +50,27 @@ def test_after_model_callback_aguardando_cpf():
     assert "auth_tentativas" not in mock_context.state
 
 
-def test_after_model_callback_aguardando_data_nascimento():
+@pytest.mark.asyncio
+async def test_after_model_callback_aguardando_data_nascimento():
     mock_context = MagicMock(spec=CallbackContext)
     mock_context.state = {}
 
     response = _criar_llm_response("Agora informe sua data de nascimento (DD/MM/AAAA).")
-    result = after_model_callback(mock_context, response)
+    result = await after_model_callback(mock_context, response)
 
     assert result is None
     assert mock_context.state.get(CONVERSATION_STATE_KEY) == BankingConversationState.AGUARDANDO_DATA_NASCIMENTO
     assert "auth_tentativas" not in mock_context.state
 
 
-def test_after_model_callback_sem_texto():
+@pytest.mark.asyncio
+async def test_after_model_callback_sem_texto():
     mock_context = MagicMock(spec=CallbackContext)
     mock_context.state = {}
 
     mock_resp = MagicMock(content=None)
-    result = after_model_callback(mock_context, mock_resp)
+    result = await after_model_callback(mock_context, mock_resp)
 
     assert result is None
     assert mock_context.state == {}
+

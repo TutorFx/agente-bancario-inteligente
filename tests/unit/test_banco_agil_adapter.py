@@ -218,9 +218,47 @@ class TestAuditoriaSolicitacao:
             assert linha["novo_limite_solicitado"] == "5000.00"
             assert linha["status_pedido"] == "aprovado"
 
-            # Valida formato ISO 8601
-            dt = datetime.fromisoformat(linha["data_hora_solicitacao"])
+            import re
+            assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", linha["data_hora_solicitacao"])
+            dt = datetime.fromisoformat(linha["data_hora_solicitacao"].replace("Z", "+00:00"))
             assert dt is not None
+
+    @pytest.mark.asyncio
+    async def test_get_cotacao_timeout_graceful(self, adapter):
+        import httpx
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.side_effect = httpx.TimeoutException("Timeout na requisição")
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            cotacao = await adapter.get_cotacao("USD")
+            assert cotacao.taxa == 0.0
+            assert cotacao.moeda_destino == "USD"
+
+    @pytest.mark.asyncio
+    async def test_get_cotacao_connect_error_graceful(self, adapter):
+        import httpx
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.side_effect = httpx.ConnectError("Falha de conexão DNS")
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            cotacao = await adapter.get_cotacao("EUR")
+            assert cotacao.taxa == 0.0
+            assert cotacao.moeda_destino == "EUR"
+
+    @pytest.mark.asyncio
+    async def test_get_cotacao_http_status_500_graceful(self, adapter):
+        import httpx
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError("500 Server Error", request=MagicMock(), response=MagicMock())
+            mock_client.get.return_value = mock_resp
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            cotacao = await adapter.get_cotacao("USD")
+            assert cotacao.taxa == 0.0
 
 
 class TestConcorrenciaERaceConditions:
