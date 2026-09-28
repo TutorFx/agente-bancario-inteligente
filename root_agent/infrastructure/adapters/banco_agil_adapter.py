@@ -30,12 +30,18 @@ class BancoAgilAdapter:
         self._clientes_lock = FileLock(self._clientes_lock_path, timeout=self._lock_timeout)
         self._solicitacoes_lock = FileLock(self._solicitacoes_lock_path, timeout=self._lock_timeout)
 
-    def _carregar_clientes(self) -> list[dict]:
+    def _ler_clientes_csv(self) -> list[dict]:
+        """Leitura direta do arquivo CSV sem acquire de lock."""
+        if not os.path.exists(CSV_PATH):
+            return []
+        with open(CSV_PATH, newline='', encoding='utf-8') as f:
+            return list(csv.DictReader(f))
+
+    def _carregar_clientes(self, lock: bool = True) -> list[dict]:
+        if not lock:
+            return self._ler_clientes_csv()
         with self._clientes_lock:
-            if not os.path.exists(CSV_PATH):
-                return []
-            with open(CSV_PATH, newline='', encoding='utf-8') as f:
-                return list(csv.DictReader(f))
+            return self._ler_clientes_csv()
 
     def _salvar_clientes(self, clientes: list[dict]) -> None:
         """
@@ -86,7 +92,7 @@ class BancoAgilAdapter:
     ) -> None:
         """
         Registra cada solicitação de aumento de limite no arquivo
-        solicitacoes_aumento_limite.csv com timestamp UTC ISO 8601.
+        solicitacoes_aumento_limite.csv com timestamp UTC ISO 8601 estrito (AAAA-MM-DDTHH:MM:SSZ).
         Protegido por FileLock contra duplicação de cabeçalho e interleaving.
         """
         with self._solicitacoes_lock:
@@ -97,7 +103,7 @@ class BancoAgilAdapter:
                 if not arquivo_existe:
                     writer.writeheader()
 
-                timestamp_utc = datetime.now(timezone.utc).isoformat()
+                timestamp_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 writer.writerow({
                     "cpf_cliente": cpf_cliente,
                     "data_hora_solicitacao": timestamp_utc,
@@ -128,10 +134,15 @@ class BancoAgilAdapter:
 
     def solicitar_aumento_limite(self, cpf: str, novo_limite: float) -> SolicitacaoLimiteDTO:
         logger.info("Solicitação de aumento de limite | cpf_masked=***%s | novo_limite=%.2f", limpar_cpf(cpf)[-4:], novo_limite)
+        auditoria_params = None
+        resultado_dto = None
+
         try:
+            # 1. Operação em clientes.csv sob lock exclusivo de clientes (sem locks aninhados)
             with self._clientes_lock:
                 cpf_limpo = limpar_cpf(cpf)
-                clientes = self._carregar_clientes()
+                # Passa lock=False para evitar reentrância desnecessária de _clientes_lock
+                clientes = self._carregar_clientes(lock=False)
                 for row in clientes:
                     if limpar_cpf(row["cpf"]) == cpf_limpo:
                         limite_atual = float(row["limite_credito"])
@@ -139,30 +150,19 @@ class BancoAgilAdapter:
                         limite_maximo = self.obter_limite_maximo_por_score(score)
 
                         if novo_limite <= limite_atual:
-                            self._registrar_auditoria_solicitacao(
-                                cpf_cliente=row["cpf"],
-                                limite_atual=limite_atual,
-                                novo_limite_solicitado=novo_limite,
-                                status_pedido="rejeitado"
-                            )
-                            return SolicitacaoLimiteDTO(
+                            auditoria_params = (row["cpf"], limite_atual, novo_limite, "rejeitado")
+                            resultado_dto = SolicitacaoLimiteDTO(
                                 aprovado=False,
                                 motivo="O novo limite deve ser maior que o limite atual.",
                                 limite_anterior=limite_atual,
                                 limite_novo=None,
                                 limite_maximo_permitido=limite_maximo
                             )
-
-                        if novo_limite <= limite_maximo:
+                        elif novo_limite <= limite_maximo:
                             row["limite_credito"] = f"{novo_limite:.2f}"
                             self._salvar_clientes(clientes)
-                            self._registrar_auditoria_solicitacao(
-                                cpf_cliente=row["cpf"],
-                                limite_atual=limite_atual,
-                                novo_limite_solicitado=novo_limite,
-                                status_pedido="aprovado"
-                            )
-                            return SolicitacaoLimiteDTO(
+                            auditoria_params = (row["cpf"], limite_atual, novo_limite, "aprovado")
+                            resultado_dto = SolicitacaoLimiteDTO(
                                 aprovado=True,
                                 motivo="Aprovado de acordo com a política de crédito.",
                                 limite_anterior=limite_atual,
@@ -170,20 +170,36 @@ class BancoAgilAdapter:
                                 limite_maximo_permitido=limite_maximo
                             )
                         else:
-                            self._registrar_auditoria_solicitacao(
-                                cpf_cliente=row["cpf"],
-                                limite_atual=limite_atual,
-                                novo_limite_solicitado=novo_limite,
-                                status_pedido="rejeitado"
-                            )
-                            return SolicitacaoLimiteDTO(
+                            auditoria_params = (row["cpf"], limite_atual, novo_limite, "rejeitado")
+                            resultado_dto = SolicitacaoLimiteDTO(
                                 aprovado=False,
                                 motivo=f"Score insuficiente para o valor solicitado. O limite máximo permitido para o seu score atual ({score}) é de R$ {limite_maximo:,.2f}.",
                                 limite_anterior=limite_atual,
                                 limite_novo=None,
                                 limite_maximo_permitido=limite_maximo
                             )
-                return SolicitacaoLimiteDTO(aprovado=False, motivo="Cliente não encontrado", limite_anterior=0.0, limite_novo=None, limite_maximo_permitido=0.0)
+                        break
+
+                if resultado_dto is None:
+                    resultado_dto = SolicitacaoLimiteDTO(
+                        aprovado=False,
+                        motivo="Cliente não encontrado",
+                        limite_anterior=0.0,
+                        limite_novo=None,
+                        limite_maximo_permitido=0.0
+                    )
+
+            # 2. Registro de auditoria desacoplado: executado FORA de _clientes_lock
+            if auditoria_params is not None:
+                self._registrar_auditoria_solicitacao(
+                    cpf_cliente=auditoria_params[0],
+                    limite_atual=auditoria_params[1],
+                    novo_limite_solicitado=auditoria_params[2],
+                    status_pedido=auditoria_params[3]
+                )
+
+            return resultado_dto
+
         except Timeout:
             logger.error("FileLock timeout ao processar aumento de limite | cpf_masked=***%s", limpar_cpf(cpf)[-4:])
             return SolicitacaoLimiteDTO(
@@ -200,7 +216,7 @@ class BancoAgilAdapter:
         logger.info("Atualizando score | cpf_masked=%s | novo_score=%d", cpf_masked, novo_score)
         try:
             with self._clientes_lock:
-                clientes = self._carregar_clientes()
+                clientes = self._carregar_clientes(lock=False)
                 for row in clientes:
                     if limpar_cpf(row["cpf"]) == limpar_cpf(cpf):
                         row["score_credito"] = str(novo_score)
@@ -218,25 +234,42 @@ class BancoAgilAdapter:
         Chama API externa e retorna a cotação invertida:
         quanto custa 1 unidade da moeda_destino em BRL.
         A API retorna BRL→X, então invertemos para X→BRL.
+        Trata graciosamente erros de rede, timeout e HTTP status sem propagar exceção.
         """
         import httpx
-        logger.info("Consultando cotação | moeda_destino=%s", moeda_destino.upper())
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                "https://open.er-api.com/v6/latest/BRL"
-            )
-            r.raise_for_status()
-            data = r.json()
-            taxa_bruta = data["rates"].get(moeda_destino.upper())
-            if taxa_bruta and taxa_bruta > 0:
-                taxa_invertida = round(1.0 / taxa_bruta, 4)
-            else:
-                taxa_invertida = 0.0
-                logger.warning("Taxa não encontrada ou zero para moeda=%s", moeda_destino.upper())
-            logger.info("Cotação obtida | 1 %s = R$ %.4f", moeda_destino.upper(), taxa_invertida)
+        moeda = moeda_destino.upper()
+        logger.info("Consultando cotação | moeda_destino=%s", moeda)
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get("https://open.er-api.com/v6/latest/BRL")
+                r.raise_for_status()
+                data = r.json()
+                taxa_bruta = data.get("rates", {}).get(moeda)
+                if taxa_bruta and taxa_bruta > 0:
+                    taxa_invertida = round(1.0 / taxa_bruta, 4)
+                else:
+                    taxa_invertida = 0.0
+                    logger.warning("Taxa não encontrada ou zero para moeda=%s", moeda)
+                logger.info("Cotação obtida | 1 %s = R$ %.4f", moeda, taxa_invertida)
+                return CotacaoDTO(
+                    moeda_origem="BRL",
+                    moeda_destino=moeda,
+                    taxa=taxa_invertida,
+                    timestamp=str(data.get("time_last_update_utc", ""))
+                )
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            logger.error("Falha de rede/HTTP ao consultar cotação para %s: %s", moeda, exc)
             return CotacaoDTO(
                 moeda_origem="BRL",
-                moeda_destino=moeda_destino.upper(),
-                taxa=taxa_invertida,
-                timestamp=str(data.get("time_last_update_utc", ""))
+                moeda_destino=moeda,
+                taxa=0.0,
+                timestamp=""
+            )
+        except Exception as exc:
+            logger.error("Erro inesperado ao consultar cotação para %s: %s", moeda, exc)
+            return CotacaoDTO(
+                moeda_origem="BRL",
+                moeda_destino=moeda,
+                taxa=0.0,
+                timestamp=""
             )
