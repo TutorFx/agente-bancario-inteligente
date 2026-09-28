@@ -3,17 +3,27 @@ Métricas com LLM como juiz (DeepEval G-Eval) sobre a conversa inteira.
 
 Os passos de avaliação são fixos (evaluation_steps) para que o juiz não precise
 gerá-los a cada chamada: isso reduz custo e variação entre execuções.
+
+Cada métrica tem limite de tempo (EVAL_TIMEOUT_JUIZ, padrão 120 s) e é repetida após um 429
+do provedor, com a mesma espera do harness; outros erros viram uma verificação reprovada
+com detalhe "erro do juiz", contabilizada à parte no relatório.
 """
+import asyncio
 import json
+import os
 
 from deepeval.metrics import GEval
 from deepeval.test_case import LLMTestCase, SingleTurnParams
 
 from tests.evals.checks import CheckResult
-from tests.evals.harness import ConversationResult
+from tests.evals.harness import ESPERA_RATE_LIMIT, ConversationResult
+from tests.evals.report import PREFIXO_ERRO_JUIZ
+from tests.evals.telemetria import eh_rate_limit
 from tests.utils.custom_evaluator import CustomGeminiEvaluator
 
 LIMIAR_JUIZ = 0.7
+TIMEOUT_JUIZ = float(os.getenv("EVAL_TIMEOUT_JUIZ", "120"))
+TENTATIVAS_JUIZ = 3
 
 CRITERIOS = {
     "tom": [
@@ -81,12 +91,20 @@ async def julgar(result: ConversationResult, criterios: list[str]) -> list[Check
             threshold=LIMIAR_JUIZ,
             async_mode=True,
         )
-        try:
-            await metrica.a_measure(caso, _show_indicator=False)
-            checks.append(CheckResult(
-                f"juiz_{nome}", f"juiz: {nome}", bool(metrica.success),
-                f"score={metrica.score:.2f} | {metrica.reason}",
-            ))
-        except Exception as exc:  # erro do juiz não deve derrubar a suíte inteira
-            checks.append(CheckResult(f"juiz_{nome}", f"juiz: {nome}", False, f"erro do juiz: {exc}"))
+        for tentativa in range(1, TENTATIVAS_JUIZ + 1):
+            try:
+                await asyncio.wait_for(metrica.a_measure(caso, _show_indicator=False), timeout=TIMEOUT_JUIZ)
+            except Exception as exc:  # erro do juiz não deve derrubar a suíte inteira
+                if eh_rate_limit(exc) and tentativa < TENTATIVAS_JUIZ:
+                    await asyncio.sleep(ESPERA_RATE_LIMIT * 2 ** (tentativa - 1))
+                    continue
+                checks.append(CheckResult(
+                    f"juiz_{nome}", f"juiz: {nome}", False, f"{PREFIXO_ERRO_JUIZ} {type(exc).__name__}: {exc}",
+                ))
+            else:
+                checks.append(CheckResult(
+                    f"juiz_{nome}", f"juiz: {nome}", bool(metrica.success),
+                    f"score={metrica.score:.2f} | {metrica.reason}",
+                ))
+            break
     return checks

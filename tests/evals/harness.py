@@ -4,10 +4,19 @@ Executor de conversas roteirizadas contra o root_agent, em processo (sem HTTP).
 Cada execução roda com uma cópia isolada dos CSVs de `data/` e com a API de câmbio
 substituída por cotações fixas, para que as métricas meçam o comportamento dos agentes
 e não a variação da API externa ou o estado deixado por execuções anteriores.
+
+As conversas rodam em série: `ambiente_isolado` troca atributos globais do adapter, o que
+não é seguro com conversas simultâneas no mesmo processo. Para respeitar a cota do
+provedor, o ritmo é controlado por variáveis de ambiente:
+- EVAL_PAUSA_SEGUNDOS: pausa antes de cada conversa (padrão 0), para limitar requisições/minuto.
+- EVAL_TIMEOUT_CONVERSA: limite em segundos para uma conversa inteira (padrão 300).
+- EVAL_TENTATIVAS: tentativas por conversa diante de erro de infraestrutura (padrão 3).
+- EVAL_ESPERA_RATE_LIMIT: espera base em segundos após um 429, dobrada a cada tentativa (padrão 30).
 """
 import asyncio
 import csv
 import json
+import os
 import shutil
 import tempfile
 import uuid
@@ -24,8 +33,13 @@ from root_agent.agent import app as banco_agil_app
 from root_agent.dependencies import banco_agil_adapter
 from root_agent.domain.models import CotacaoDTO
 from root_agent.infrastructure.adapters import banco_agil_adapter as adapter_module
+from tests.evals.telemetria import ContadorLLM, contador, eh_rate_limit
 
 APP_NAME = "root_agent"
+PAUSA_ENTRE_CONVERSAS = float(os.getenv("EVAL_PAUSA_SEGUNDOS", "0"))
+TIMEOUT_CONVERSA = float(os.getenv("EVAL_TIMEOUT_CONVERSA", "300"))
+TENTATIVAS = int(os.getenv("EVAL_TENTATIVAS", "3"))
+ESPERA_RATE_LIMIT = float(os.getenv("EVAL_ESPERA_RATE_LIMIT", "30"))
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 # Cotações fixas (1 unidade da moeda em BRL) usadas no lugar da API ao vivo
@@ -60,6 +74,9 @@ class ConversationResult:
     turns: list[TurnResult]
     final_state: dict[str, Any]
     clientes: dict[str, dict[str, str]]  # clientes.csv ao final, indexado por CPF
+    tentativas: int = 1
+    # Erros de infraestrutura das tentativas anteriores: {"tentativa", "tipo", "detalhe"}
+    incidentes: list[dict[str, Any]] = field(default_factory=list)
 
     def tool_responses(self, name: str | None = None) -> list[dict[str, Any]]:
         return [
@@ -108,6 +125,15 @@ def _decodificar(response: Any) -> Any:
 
 class FalhaNoLogin(Exception):
     """O login do prelúdio não autenticou o cliente: falha de comportamento, não de infraestrutura."""
+
+
+class FalhaDeInfraestrutura(Exception):
+    """Todas as tentativas da conversa falharam por infraestrutura (rate limit, timeout, 5xx)."""
+
+    def __init__(self, incidentes: list[dict[str, Any]]):
+        ultimo = incidentes[-1] if incidentes else {}
+        super().__init__(f"{len(incidentes)} tentativa(s) sem sucesso; última: {ultimo.get('tipo')}: {ultimo.get('detalhe')}")
+        self.incidentes = incidentes
 
 
 async def _enviar(runner: InMemoryRunner, user_id: str, session_id: str, mensagem: str) -> TurnResult:
@@ -176,20 +202,63 @@ async def executar_conversa(
         return ConversationResult(turns=turns, final_state=dict(final.state), clientes=clientes)
 
 
+def _tipo_de_incidente(exc: BaseException) -> str:
+    if eh_rate_limit(exc):
+        return "rate_limit"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    return type(exc).__name__
+
+
+def _espera(tipo: str, tentativa: int) -> float:
+    if tipo == "rate_limit":
+        return ESPERA_RATE_LIMIT * 2 ** (tentativa - 1)
+    return 5.0 * tentativa
+
+
 async def executar_com_retentativas(
     mensagens: list[str],
     cliente: dict | None = None,
     state: dict[str, Any] | None = None,
-    tentativas: int = 3,
+    tentativas: int | None = None,
+    *,
+    timeout: float | None = None,
+    executor=executar_conversa,
+    dormir=asyncio.sleep,
+    medidor: ContadorLLM = contador,
 ) -> ConversationResult:
-    """Repete a conversa em erros de infraestrutura (rate limit, 5xx); não mascara falhas de comportamento."""
+    """
+    Repete a conversa inteira, numa sessão nova, em erros de infraestrutura, para que um
+    blip de cota não conte como falha de comportamento. É erro de infraestrutura:
+    - exceção na conversa (429, 5xx do provedor) ou estouro de EVAL_TIMEOUT_CONVERSA;
+    - 429 que o guardrail engoliu (ele aplica fail-open/fail-closed sem propagar o erro),
+      detectado pelo contador do LiteLLM: a conversa foi afetada pela cota e é refeita.
+    Falhas de comportamento (inclusive FalhaNoLogin) não são repetidas. Os incidentes ficam
+    no resultado; se todas as tentativas falharem, sobem em FalhaDeInfraestrutura.
+    """
+    tentativas = tentativas or TENTATIVAS
+    timeout = timeout or TIMEOUT_CONVERSA
+    incidentes: list[dict[str, Any]] = []
     for tentativa in range(1, tentativas + 1):
+        if PAUSA_ENTRE_CONVERSAS:
+            await dormir(PAUSA_ENTRE_CONVERSAS)
+        antes = medidor.instantaneo()
         try:
-            return await executar_conversa(mensagens, cliente, state)
+            result = await asyncio.wait_for(executor(mensagens, cliente, state), timeout=timeout)
         except FalhaNoLogin:
             raise
-        except Exception:
-            if tentativa == tentativas:
-                raise
-            await asyncio.sleep(5 * tentativa)
-    raise RuntimeError("inalcançável")
+        except Exception as exc:
+            tipo = _tipo_de_incidente(exc)
+            detalhe = f"{type(exc).__name__}: {str(exc)[:160]}"
+        else:
+            # O LiteLLM chama o callback de falha antes de propagar a exceção: a contagem já está em dia
+            engolidos = (medidor.instantaneo() - antes).rate_limits
+            if not engolidos:
+                result.tentativas = tentativa
+                result.incidentes = incidentes
+                return result
+            tipo, detalhe = "rate_limit", f"{engolidos} chamada(s) com 429 absorvida(s) pelo guardrail"
+        incidentes.append({"tentativa": tentativa, "tipo": tipo, "detalhe": detalhe})
+        if tentativa < tentativas:
+            await dormir(_espera(tipo, tentativa))
+    raise FalhaDeInfraestrutura(incidentes)
