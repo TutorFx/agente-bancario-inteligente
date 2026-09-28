@@ -34,7 +34,11 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
                   ┌────────────────────────┐
                   │  Interface Streamlit   │
                   └───────────┬────────────┘
-                              │ HTTP / REST
+                              │ Request HTTP / REST
+                 ┌────────────▼─────────────┐
+                 │  🛡️ Input Middleware     │ (Regex + LLM Semântico)
+                 └────────────┬─────────────┘
+                              │
                   ┌───────────▼────────────┐
                   │   Google ADK Runner    │
                   └───────────┬────────────┘
@@ -50,36 +54,21 @@ A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** p
 │    Crédito     │   │    Entrevista      │   │    Câmbio          │
 └────┬───────────┘   └────────┬───────────┘   └────────┬───────────┘
      │                        │                        │
-     └────────────────────────┴────────────────────────┘
-                              │
-                ┌─────────────▼─────────────┐
-                │   Camada de Persistência  │
-                │     BancoAgilAdapter      │
-                └─────────────┬─────────────┘
-                              │ FileLock & Escrita Atômica
-     ┌────────────────────────┼────────────────────────┐
-┌────▼───────────┐   ┌────────▼───────────┐   ┌────────▼───────────┐
-│  clientes.csv  │   │  score_limite.csv  │   │solicitacoes_aument│
-└────────────────┘   └────────────────────┘   │o_limite.csv (Log) │
-                                              └────────────────────┘
+     ├────────────────────────┴────────────────────────┤
+     │                                                 │
+┌────▼──────────────────────┐            ┌─────────────▼─────────────┐
+│  🛡️ Output Middleware     │            │   Camada de Persistência  │
+│(Anti-Vazamento/Alucinação)│            │     BancoAgilAdapter      │
+└────┬──────────────────────┘            └─────────────┬─────────────┘
+     │ Retorno ao Chat                                 │ FileLock
+┌────▼──────────────────────┐            ┌─────────────▼─────────────┐
+│    Interface Streamlit    │            │ Arquivos .CSV (Data Layer)│
+└───────────────────────────┘            └───────────────────────────┘
 ```
 
 ---
 
-## 🔒 3. Concorrência, Concessão de Crédito e Auditoria
-
-### 🛡️ Proteção Contra Condição de Corrida (Race Conditions)
-Como o **Streamlit** executa requisições em múltiplas threads simultâneas, o adaptador de persistência (`BancoAgilAdapter`) foi blindado com técnicas de nível produtivo:
-1. **Bloqueio Interprocessos (`FileLock`):** Instâncias de `_clientes_lock` e `_solicitacoes_lock` protegem o ciclo *Read-Modify-Write*, eliminando o problema de atualizações perdidas (*lost updates*).
-2. **Escrita Atômica (`os.replace` + `os.fsync`):** Gravações em `clientes.csv` ocorrem primeiro em arquivos temporários com nivelamento de buffer em disco (`os.fsync`) antes da substituição atômica (`os.replace`), garantindo que o arquivo nunca seja truncado ou corrompido para 0 bytes em caso de falha.
-
-### 📊 Governança Dinâmica de Crédito & Auditoria em UTC
-> 📌 **Nota sobre Concessão de Crédito e Auditoria Dinâmica:**
-> A concessão de ajuste de limite é gerenciada dinamicamente pela leitura da tabela de faixas de score (`data/score_limite.csv`) e estritamente auditada a cada requisição (seja aprovada ou rejeitada) no arquivo `data/solicitacoes_aumento_limite.csv` com timestamps em UTC no padrão **ISO 8601**. Em um ambiente de produção corporativo, essa camada de I/O baseada em arquivos seria desacoplada e conectada diretamente a um **Motor de Regras de Crédito (BRMS - Business Rules Management System)** via API REST e a um barramento de eventos (ex: Kafka / RabbitMQ) para auditoria transacional e governança em tempo real.
-
----
-
-## 🚀 4. Funcionalidades Implementadas
+## 🚀 3. Funcionalidades Implementadas
 
 - [x] **Autenticação Segura:** Sanitização de CPF e validação contra `clientes.csv`, com limite de 3 tentativas incorretas por sessão.
 - [x] **Matriz Dinâmica de Crédito:** Concessão parametrizada via `score_limite.csv` por faixas de pontuação, eliminando condicionais fixas (*hardcoded*).
@@ -91,19 +80,7 @@ Como o **Streamlit** executa requisições em múltiplas threads simultâneas, o
 
 ---
 
-## 💡 5. Decisões Técnicas e Justificativas de Design
-
-| Decisão de Arquitetura | Justificativa Técnica / Benefício para o Negócio |
-| :--- | :--- |
-| **Framework Google ADK** | Permite isolar escopos e prompts em subagentes especializados, garantindo determinismo e facilitando a manutenção. |
-| **Cálculo de Score via Tool Python** | Impede que a LLM estime ou invente pontuações de crédito, garantindo determinismo matemático absoluto. |
-| **Fórmula de Risco por Categoria** | A aplicação de tetos por componente evita que clientes com rendas muito elevadas neutralizem penalidades relativas a desemprego ou dívidas ativas. |
-| **`FileLock` + Escrita Atômica** | Elimina riscos de corrupção de arquivos planos em execuções concorrentes no Streamlit. |
-| **Painel Lateral de Debug (`st.sidebar`)** | Separa a experiência do cliente (chat limpo) da visão de auditoria do avaliador (exibição do agente ativo e status de autenticação). |
-
----
-
-## 🛠️ 6. Desafios Enfrentados e Soluções
+## 🛠️ 4. Desafios Enfrentados e Soluções
 
 1. **Distorção de Borda no Algoritmo de Score:**
    * *Desafio:* A razão ilimitada entre renda e despesas fazia com que rendas altas atingissem o teto de 1000 pontos isoladamente, anulando a penalidade de desemprego ou dívidas.
@@ -117,7 +94,35 @@ Como o **Streamlit** executa requisições em múltiplas threads simultâneas, o
 
 ---
 
-## 🚀 7. Começando (Tutorial de Execução e Testes)
+## 💡 5. Escolhas Técnicas e Justificativas de Design
+
+| Decisão de Arquitetura | Justificativa Técnica / Benefício para o Negócio |
+| :--- | :--- |
+| **Framework Google ADK** | Permite isolar escopos e prompts em subagentes especializados, garantindo determinismo e facilitando a manutenção. |
+| **Cálculo de Score via Tool Python** | Impede que a LLM estime ou invente pontuações de crédito, garantindo determinismo matemático absoluto. |
+| **Fórmula de Risco por Categoria** | A aplicação de tetos por componente evita que clientes com rendas muito elevadas neutralizem penalidades relativas a desemprego ou dívidas ativas. |
+| **`FileLock` + Escrita Atômica** | Elimina riscos de corrupção de arquivos planos em execuções concorrentes no Streamlit. |
+| **Painel Lateral de Debug (`st.sidebar`)** | Separa a experiência do cliente (chat limpo) da visão de auditoria do avaliador (exibição do agente ativo e status de autenticação). |
+
+### 🔒 Concorrência, Concessão de Crédito e Auditoria
+Como o **Streamlit** executa requisições em múltiplas threads simultâneas, o adaptador de persistência (`BancoAgilAdapter`) foi blindado com técnicas de nível produtivo:
+1. **Bloqueio Interprocessos (`FileLock`):** Instâncias de `_clientes_lock` e `_solicitacoes_lock` protegem o ciclo *Read-Modify-Write*, eliminando o problema de atualizações perdidas (*lost updates*).
+2. **Escrita Atômica (`os.replace` + `os.fsync`):** Gravações em `clientes.csv` ocorrem primeiro em arquivos temporários com nivelamento de buffer em disco (`os.fsync`) antes da substituição atômica (`os.replace`), garantindo que o arquivo nunca seja truncado ou corrompido para 0 bytes em caso de falha.
+
+### 📊 Governança Dinâmica de Crédito & Auditoria em UTC
+> A concessão de ajuste de limite é gerenciada dinamicamente pela leitura da tabela de faixas de score (`data/score_limite.csv`) e estritamente auditada a cada requisição (seja aprovada ou rejeitada) no arquivo `data/solicitacoes_aumento_limite.csv` com timestamps em UTC no padrão **ISO 8601**. Em um ambiente de produção corporativo, essa camada de I/O baseada em arquivos seria desacoplada e conectada diretamente a um **Motor de Regras de Crédito (BRMS - Business Rules Management System)** via API REST e a um barramento de eventos (ex: Kafka / RabbitMQ) para auditoria transacional e governança em tempo real.
+
+### 🛡️ Defense in Depth (Sanduíche de Guardrails)
+O sistema adota o padrão de segurança corporativo de Defesa em Profundidade para blindar os agentes de inteligência artificial contra ataques de **Prompt Injection**, **Jailbreak** e **Prompt Leakage**:
+1. **Input Guardrail Híbrido (`input_middleware.py`):** 
+   - **Determinístico (Regex):** Bloqueia instantaneamente termos óbvios de override com latência zero.
+   - **Semântico (LLM):** Inspeciona a intenção do usuário antes do roteamento, bloqueando tentativas de adoção de persona de autoridade (ex: "sou auditor do sistema") ou cálculos ilícitos.
+2. **Output Guardrail Semântico (`output_middleware.py`):** Intercepta a resposta gerada pelo Agente antes de enviar ao usuário. Verifica se a IA não "alucinou" vazando nomes técnicos de ferramentas, instruções internas de prompt ou tratou de assuntos fora do escopo bancário.
+3. **Prompts Enxutos:** Com as camadas externas garantindo a segurança, os *System Prompts* dos subagentes ficam limpos e focados exclusivamente na lógica de negócio e no bom atendimento, economizando tokens e reduzindo a latência global.
+
+---
+
+## 🚀 6. Começando (Tutorial de Execução e Testes)
 
 Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
 
@@ -183,6 +188,24 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
 
 ---
 
+### 👤 Credenciais de Teste para Avaliação Rápida
+
+Para testar o fluxo de autenticação e os cenários dos agentes no Streamlit ou via API, utilize qualquer uma das combinações de clientes cadastradas na base [`data/clientes.csv`](data/clientes.csv):
+
+| Cliente | CPF (Com ou Sem Pontuação) | Data de Nascimento | Score Atual | Limite Atual | Conta | Cenário Sugerido |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **João Silva** *(Recomendado)* | `123.456.789-00` ou `12345678900` | `15/03/1985` | 824 | R$ 50.000,00 | 0001 | Score excelente e limite alto pré-aprovado |
+| **Maria Santos** | `987.654.321-00` ou `98765432100` | `22/07/1990` | 580 | R$ 2.500,00 | 0002 | Score intermediário, ideal para aumento de limite ou entrevista |
+| **Roberto Mendes** | `999.000.111-22` ou `99900011122` | `12/08/1975` | 450 | R$ 500,00 | 0009 | Score baixo, útil para testar limites e recálculo de pontuação |
+
+> 💡 **Exemplo Rápido para Copiar e Colar no Chat quando solicitado:**
+> * **CPF:** `123.456.789-00`
+> * **Data de Nascimento:** `15/03/1985`
+> 
+> *Nota: O agente aceita o CPF tanto com máscara quanto apenas números. O sistema aplica bloqueio definitivo na 3ª tentativa incorreta consecutiva na mesma sessão.*
+
+---
+
 ### 🧪 Execução da Suíte de Testes Automatizados
 
 O projeto conta com uma suíte abrangente de testes unitários, de integração, de concorrência e de borda desenvolvida com `pytest`.
@@ -206,9 +229,10 @@ pytest
 > * **Tempo de Execução:** A bateria completa com 39 testes leva aproximadamente **40 a 50 segundos** para concluir.
 > * **Garantia de Qualidade:** A suíte valida 100% dos caminhos do motor de crédito (`guardrails.py`) e atinge **~85% de cobertura global**, superando com folga o limiar mínimo obrigatório de **75%** (`--cov-fail-under=75`).
 
-#### 3. Execução Rápida (Apenas Testes Unitários)
-Para validar apenas a lógica de negócio, guardrails e adapters instantaneamente (em menos de 2 segundos), sem depender de internet ou de chamadas externas de LLM:
+#### 3. Execução Rápida (Apenas Testes Unitários - 100% Determinísticos)
+Para validar toda a lógica de negócio, middlewares, presenters, guardrails e adapters instantaneamente (em ~1 segundo), sem depender de conexão de internet ou chaves de LLM:
 
 ```bash
 pytest tests/unit/
 ```
+> 🎯 **Cobertura Unitária Isolada:** Apenas os testes unitários já atingem **~91% de cobertura de código** (`root_agent`), superando a exigência de **75%** sem qualquer dependência externa ou não-determinismo.
