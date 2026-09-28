@@ -6,7 +6,8 @@ from root_agent.utils import get_logger, registrar_metricas
 logger = get_logger("middleware.input")
 
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.models import LlmRequest, LlmResponse
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from root_agent import config
@@ -133,7 +134,7 @@ def _mascarar_pii_no_request(llm_request: LlmRequest) -> None:
         if content.role != "user" or not content.parts:
             continue
         for part in content.parts:
-            if getattr(part, "text", None):
+            if part.text:
                 part.text = _mascarar_pii(part.text)
 
 def _texto_do_turno(callback_context: CallbackContext, llm_request: LlmRequest) -> str | None:

@@ -1,7 +1,7 @@
 from typing import Optional
 
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.models import LlmResponse
+from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from root_agent import config
@@ -91,7 +91,7 @@ def _sanitizar_persona(llm_response: LlmResponse) -> None:
     if not content or not content.parts:
         return
     for part in content.parts:
-        if getattr(part, "text", None) and not getattr(part, "thought", False):
+        if part.text and not part.thought:
             part.text = _remover_anuncio_transferencia(part.text)
 
 
@@ -199,7 +199,7 @@ async def after_model_callback(
             role="model",
             parts=[types.Part(text=MENSAGEM_RESPOSTA_BLOQUEADA)]
         )
-        texto = _extrair_texto_resposta(llm_response) # Atualiza o texto para as verificações abaixo
+        texto = MENSAGEM_RESPOSTA_BLOQUEADA  # Atualiza o texto para as verificações abaixo
 
     # A detecção por palavra-chave só vale durante o login: após autenticado, uma
     # resposta que mencione "CPF" não pode reabrir a coleta de credenciais.
