@@ -1,143 +1,126 @@
-# 🏦 Banco Ágil — Sistema Bancário Multi-Agente de IA
+# Banco Ágil: atendimento bancário multiagente
 
-Bem-vindo ao repositório do **Banco Ágil**, um sistema de atendimento bancário automatizado baseado em **Agentes de IA Especializados** e orquestrado com o **Google ADK (Agent Developer Kit)** e **Streamlit**.
+Sistema de atendimento bancário com agentes de IA, orquestrado com o **Google ADK (Agent Development Kit)** e com uma interface de testes em **Streamlit**.
 
-O sistema foi desenvolvido para oferecer uma experiência de atendimento fluida e unificada ao cliente, em que a transição entre subagentes de **Triagem**, **Crédito**, **Entrevista Financeira** e **Câmbio** ocorre de forma **implícita e transparente**, mantendo rígidos controles de segurança, determinismo financeiro, auditabilidade regulatória e resiliência a acessos concorrentes.
-
----
-
-## 📐 1. Visão Geral do Projeto
-
-O projeto demonstra a aplicação prática de **Sistemas Multi-Agente (MAS)** no setor financeiro, combinando a versatilidade de Modelos de Linguagem (LLMs) com o determinismo de ferramentas de código Python para regras de crédito e integrações externas.
-
-### 👥 Escopo e Atribuição dos Agentes
-* 🤖 **Agente de Triagem (Host/Orquestrador):** Receptáculo primário da sessão. Realiza a saudação, coleta e validação de credenciais (CPF e Data de Nascimento) contra o cadastro em `clientes.csv`, sanitizando entradas e encerrando/reiniciando a sessão na 3ª falha consecutiva.
-* 💳 **Agente de Crédito:** Responsável por consultar limites atuais, processar solicitações de alteração de limite e validar o teto permitido via matriz de risco dinâmica (`data/score_limite.csv`).
-* 🗣️ **Agente de Entrevista de Crédito:** Conduz uma entrevista financeira estruturada em 5 perguntas (Renda, Emprego, Despesas, Dependentes e Dívidas), aciona o motor determinístico de cálculo de score via Tool Python e persiste a pontuação atualizada.
-* 💱 **Agente de Câmbio:** Consulta cotações de referência de moedas estrangeiras (o provedor atualiza uma vez por dia) via chamadas assíncronas, com tratamento de timeout e guardrails de pré-validação de moedas.
+O cliente conversa com um único assistente. Por trás dele, os agentes de **Triagem**, **Crédito**, **Entrevista de Crédito** e **Câmbio** trocam o turno entre si sem anunciar a transferência. Autenticação, cálculo de score e decisão de limite são feitos em código Python, não pela LLM.
 
 ---
 
-## 🏗️ 2. Arquitetura do Sistema (DDD & SOLID)
+## 1. Visão Geral do Projeto
 
-A solução adota os princípios de **Domain-Driven Design (DDD)** e **SOLID** para garantir manutenibilidade, testabilidade e desacoplamento das regras de negócio em relação aos frameworks de IA:
+A LLM conduz a conversa e escolhe o agente de cada assunto. As regras de crédito, a autenticação e as integrações ficam em tools e callbacks Python, com resultado previsível e testável.
 
-- **Domain-Driven Design (DDD):**
-  - `domain`: O coração do negócio, livre de frameworks externos. Contém DTOs, entidades e os motores de regra (ex: `guardrails.py` para cálculo de risco e validações).
-  - `application`: Ferramentas (`tools`), subagentes (`subagents`) e manipuladores de caso de uso.
-  - `infrastructure`: Adaptadores que gerenciam integrações externas, persistência em arquivos CSV com controle de trava (`BancoAgilAdapter`) e chamadas HTTP de câmbio.
-- **Single Responsibility Principle (SRP):** Cada agente possui um papel único e escopo delimitado. O Agente de Crédito lida apenas com gestão de limites; o Agente de Câmbio foca exclusivamente na cotação de moedas.
-- **Dependency Inversion Principle (DIP):** As ferramentas da LLM operam via interfaces e adaptadores, isolando a regra de negócio central da camada de orquestração do Google ADK.
+### Escopo dos agentes
+* **Agente de Triagem:** porta de entrada. Faz a saudação, coleta CPF e data de nascimento e os valida contra `clientes.csv`. Na 3ª falha consecutiva, encerra o atendimento.
+* **Agente de Crédito:** informa o limite atual, processa pedidos de aumento e os valida pela tabela de faixas de score (`data/score_limite.csv`).
+* **Agente de Entrevista de Crédito:** faz 5 perguntas (renda, emprego, despesas, dependentes e dívidas), calcula o novo score por uma tool Python e grava o resultado em `clientes.csv`.
+* **Agente de Câmbio:** consulta cotações de referência na API pública do ExchangeRate, que atualiza as taxas uma vez por dia.
 
-### 🔄 Diagrama de Orquestração
+Um quinto agente, `agente_fora_escopo`, responde com uma recusa educada a pedidos sem relação com o banco.
+
+---
+
+## 2. Arquitetura do Sistema
+
+O código está dividido em três camadas:
+
+- `domain`: regras de negócio sem dependência do ADK. Contém os DTOs (Pydantic), a validação de CPF e datas, a regra de aumento de limite e a fórmula de score (`guardrails.py`), além da máscara de PII (`pii.py`).
+- `application`: agentes (`subagents`), tools, callbacks do ADK (`middlewares`) e as mensagens fixas do atendimento (`presenters`).
+- `infrastructure`: leitura e escrita dos CSVs com trava de arquivo, chamada HTTP de câmbio (`BancoAgilAdapter`), configuração do modelo e os middlewares HTTP da API.
+
+As tools não acessam os arquivos diretamente: recebem o `BancoAgilAdapter` pelas funções de fábrica (`get_credito_tools`, `get_cambio_tool`), o que permite testá-las com um adapter falso.
+
+### Fluxo de uma mensagem
 ```
-                  ┌────────────────────────┐
-                  │  Interface Streamlit   │
-                  └───────────┬────────────┘
-                              │ Request HTTP / REST
-                 ┌────────────▼─────────────┐
-                 │  🛡️ Input Middleware     │ (Regex + LLM Semântico)
-                 └────────────┬─────────────┘
-                              │
-                  ┌───────────▼────────────┐
-                  │   Google ADK Runner    │
-                  └───────────┬────────────┘
-                              │
-               ┌──────────────┴──────────────┐
-               │  🤖 Agente de Triagem (Host)│
-               └──────────────┬──────────────┘
-                              │ (Handoff Implícito)
-     ┌────────────────────────┼────────────────────────┐
-     │                        │                        │
-┌────▼───────────┐   ┌────────▼───────────┐   ┌────────▼───────────┐
-│ 💳 Agente de   │   │ 🗣️ Agente de       │   │ 💱 Agente de      │
-│    Crédito     │   │    Entrevista      │   │    Câmbio          │
-└────┬───────────┘   └────────┬───────────┘   └────────┬───────────┘
-     │                        │                        │
-     ├────────────────────────┴────────────────────────┤
-     │                                                 │
-┌────▼──────────────────────┐            ┌─────────────▼─────────────┐
-│  🛡️ Output Middleware     │            │   Camada de Persistência  │
-│(Anti-Vazamento/Alucinação)│            │     BancoAgilAdapter      │
-└────┬──────────────────────┘            └─────────────┬─────────────┘
-     │ Retorno ao Chat                                 │ FileLock
-┌────▼──────────────────────┐            ┌─────────────▼─────────────┐
-│    Interface Streamlit    │            │ Arquivos .CSV (Data Layer)│
-└───────────────────────────┘            └───────────────────────────┘
+ Streamlit ──HTTP──▶ API FastAPI (main.py)
+                      │  middlewares HTTP: token, estado protegido,
+                      │  fila por sessão, redação de PII
+                      ▼
+                     Runner do ADK
+                      │
+                      ▼
+               Agente de Triagem ──transfer_to_agent──▶ Crédito | Entrevista | Câmbio | Fora de escopo
+                      │                                  │
+                      │  em cada agente:                 │
+                      │  before_model_callback (login, guardrail de entrada, máscara de PII)
+                      │  before_tool_callback  (exige cliente autenticado)
+                      │  after_model_callback  (guardrail de saída, remove anúncio de transferência)
+                      ▼                                  ▼
+                            BancoAgilAdapter ──FileLock──▶ data/*.csv
+                                             ──httpx────▶ open.er-api.com
 ```
 
 ---
 
-## 🚀 3. Funcionalidades Implementadas
+## 3. Funcionalidades Implementadas
 
-- [x] **Autenticação Segura:** Sanitização de CPF e validação contra `clientes.csv`, com limite de 3 tentativas incorretas por sessão. *Testes:* `tests/unit/test_input_middleware.py`.
-- [x] **Matriz Dinâmica de Crédito:** Concessão parametrizada via `score_limite.csv` por faixas de pontuação, eliminando condicionais fixas (*hardcoded*). *Testes:* `tests/integration/test_credito_adapter_integration.py`.
-- [x] **Modelo Ponderado por Categoria:** Cálculo de score calibrado com tetos individuais por componente (Renda, Emprego, Comprometimento, Dependentes e Dívidas), limitando o intervalo estritamente entre 0 e 1000 pontos. *Testes:* `tests/unit/test_guardrails.py`.
-- [x] **Trilha de Auditoria Regulatória:** Registro append-only de todas as transações de crédito com carimbo de data/hora em ISO 8601 UTC (`data/solicitacoes_aumento_limite.csv`). *Testes:* `tests/integration/test_credito_adapter_integration.py`.
-- [x] **Consultas de Câmbio (Cotação de Referência):** Chamadas assíncronas (`httpx`) à API do ExchangeRate, que atualiza as taxas uma vez por dia (a resposta informa a data da cotação). Guardrails validam a moeda antes da chamada (USD, EUR, GBP, ARS, JPY e CHF, todas presentes no provedor), e o cliente recebe mensagens distintas para "moeda indisponível no provedor" e "falha de rede/timeout". *Testes:* `tests/unit/test_cambio_tool.py` e `tests/unit/test_banco_agil_adapter.py`.
-- [x] **Transição Implícita de Agentes:** Roteamento transparente no Google ADK, acompanhado por um painel lateral de telemetria para o avaliador no Streamlit (`st.sidebar` em `streamlit_app.py`).
-- [x] **Reset de Sessão & Proteção PII:** Limpeza do estado no encerramento ("tchau"), no bloqueio após 3 tentativas e em `ATAQUE`, gravada no `state_delta` do evento e persistida pelo SessionService (a lista de chaves fica centralizada em `ESTADO_SEM_AUTENTICACAO`). Mensagens de erro usam exemplos estáticos (`BankingPresenter`) para evitar vazamento de dados de clientes. *Testes:* `tests/unit/test_session_tool.py`, `tests/integration/test_reset_sessao_persistido.py` e `tests/unit/test_banking_presenter.py`.
-
----
-
-## 🛠️ 4. Desafios Enfrentados e Soluções
-
-1. **Distorção de Borda no Algoritmo de Score:**
-   * *Desafio:* A razão ilimitada entre renda e despesas fazia com que rendas altas atingissem o teto de 1000 pontos isoladamente, anulando a penalidade de desemprego ou dívidas.
-   * *Solução:* Migração para um modelo ponderado por categoria em `guardrails.py` com teto máximo individual por componente: renda até 300 pts (raiz quadrada, saturando em R$ 30.000), emprego até 200 (CLT 200, autônomo 100, desempregado 0), comprometimento até 200, dependentes até 150 e dívidas até 150.
-   * *Regras de borda:* (a) com renda ≤ 0 o comprometimento vale 0 pts, pois não há renda a comprometer (antes, renda e despesa zeradas concediam os 200 pts cheios e um desempregado sem renda chegava a 500 pts); (b) o score de desempregado tem teto de **600 pts**, independentemente da renda declarada, mantendo-o fora das faixas de limite ≥ 700 (antes, desempregado com R$ 50 mil de renda chegava a 800 pts). O corte é exposto no detalhamento como `ajuste_teto_desemprego`. Ambos os casos têm testes parametrizados em `tests/unit/test_guardrails.py`.
-2. **Condições de Corrida no I/O do Streamlit:**
-   * *Desafio:* Múltiplas requisições simultâneas causavam *lost updates* e arquivos CSV vazios durante sobrescritas.
-   * *Solução:* Implementação de `FileLock` e gravação em arquivo temporário com substituição atômica (`os.replace`). *Testes:* escrita atômica e concorrência com `ThreadPoolExecutor` em `tests/unit/test_banco_agil_adapter.py`.
-3. **Persistência de Sessão Pós-Despedida:**
-   * *Desafio:* Enviar mensagens de encerramento mantinha o estado autenticado ativo para perguntas subsequentes.
-   * *Solução:* O reset grava `None` nas chaves de autenticação pela API pública do `State` (`resetar_autenticacao` em `conversation_state.py`). O ADK não apaga chaves do estado: o `state_delta` só sobrescreve, então `None` é o que limpa um valor. Uma versão anterior removia as chaves do `_delta` interno e o CPF continuava gravado no backend; os testes com `MagicMock` não pegavam o problema. O Streamlit também gera um novo ID de sessão. *Testes:* `tests/unit/test_session_tool.py` e `tests/integration/test_reset_sessao_persistido.py`, com `InMemorySessionService`, `InMemoryRunner` e leitura do estado persistido.
+- [x] **Autenticação:** CPF (com ou sem pontuação) e data de nascimento validados contra `clientes.csv`, com até 3 tentativas consecutivas. A validação é feita no `input_middleware`, sem passar pela LLM. *Testes:* `tests/unit/test_input_middleware.py`.
+- [x] **Limite por faixa de score:** o teto de cada faixa vem de `score_limite.csv`, não de condicionais no código. *Testes:* `tests/integration/test_credito_adapter_integration.py`.
+- [x] **Score ponderado por categoria:** renda, emprego, comprometimento da renda, dependentes e dívidas, cada um com teto próprio, somando no máximo 1000 pontos. *Testes:* `tests/unit/test_guardrails.py`.
+- [x] **Registro das solicitações de aumento:** cada pedido, aprovado ou rejeitado, é acrescentado a `data/solicitacoes_aumento_limite.csv` com data e hora em ISO 8601 (UTC). O status gravado é o final (`aprovado` ou `rejeitado`); o valor `pendente` não é usado, porque a decisão acontece na mesma chamada. *Testes:* `tests/integration/test_credito_adapter_integration.py`.
+- [x] **Câmbio:** chamadas assíncronas (`httpx`) à API do ExchangeRate. A moeda é validada antes da chamada (USD, EUR, GBP, ARS, JPY e CHF), e o cliente recebe mensagens diferentes para "moeda indisponível no provedor" e "falha de rede/timeout". *Testes:* `tests/unit/test_cambio_tool.py` e `tests/unit/test_banco_agil_adapter.py`.
+- [x] **Transição entre agentes sem anúncio:** os prompts proíbem anunciar a transferência, e o `after_model_callback` remove frases como "vou transferir você para o agente de crédito" se a LLM escrevê-las. A barra lateral do Streamlit mostra o agente ativo, como informação de depuração para quem testa.
+- [x] **Reset de sessão:** no encerramento ("tchau"), no bloqueio após 3 tentativas e em mensagens classificadas como `ATAQUE`, as chaves de autenticação são limpas no `state_delta` do evento e persistidas pelo SessionService (lista em `ESTADO_SEM_AUTENTICACAO`). *Testes:* `tests/unit/test_session_tool.py` e `tests/integration/test_reset_sessao_persistido.py`.
 
 ---
 
-## 💡 5. Escolhas Técnicas e Justificativas de Design
+## 4. Desafios Enfrentados e Soluções
 
-| Decisão de Arquitetura | Justificativa Técnica / Benefício para o Negócio |
+1. **Score distorcido em casos extremos:**
+   * *Desafio:* na primeira versão, a razão entre renda e despesas não tinha limite, e uma renda alta sozinha levava o score a 1000, anulando a penalidade por desemprego ou dívidas.
+   * *Solução:* cada componente passou a ter um teto em `guardrails.py`: renda até 300 pts (raiz quadrada, saturando em R$ 30.000), emprego até 200 (CLT 200, autônomo 100, desempregado 0), comprometimento até 200, dependentes até 150 e dívidas até 150.
+   * *Regras de borda:* (a) com renda ≤ 0, o comprometimento vale 0 pts (antes, renda e despesa zeradas davam os 200 pts cheios, e um desempregado sem renda chegava a 500 pts); (b) o score de desempregado tem teto de **600 pts**, o que o mantém fora das faixas de limite a partir de 700 (antes, um desempregado com R$ 50 mil de renda chegava a 800 pts). O corte aparece no detalhamento como `ajuste_teto_desemprego`. Os dois casos têm testes parametrizados em `tests/unit/test_guardrails.py`.
+2. **Concorrência na escrita dos CSVs:**
+   * *Desafio:* a API atende requisições em paralelo, e duas escritas simultâneas em `clientes.csv` podiam perder uma atualização ou deixar o arquivo vazio durante a sobrescrita.
+   * *Solução:* `FileLock` em volta de cada ciclo de leitura e escrita, e gravação em arquivo temporário seguida de `os.replace`. *Testes:* escrita atômica e concorrência com `ThreadPoolExecutor` em `tests/unit/test_banco_agil_adapter.py`.
+3. **Sessão autenticada após a despedida:**
+   * *Desafio:* depois do "tchau", o estado autenticado continuava ativo para as perguntas seguintes.
+   * *Solução:* o reset grava `None` nas chaves de autenticação pela API pública do `State` (`resetar_autenticacao` em `conversation_state.py`). O ADK não apaga chaves do estado: o `state_delta` só sobrescreve, então `None` é o que limpa um valor. Uma versão anterior removia as chaves do `_delta` interno, e o CPF continuava gravado no backend; os testes com `MagicMock` não pegavam o problema. O Streamlit também gera um novo ID de sessão. *Testes:* `tests/unit/test_session_tool.py` e `tests/integration/test_reset_sessao_persistido.py`, com `InMemorySessionService`, `InMemoryRunner` e leitura do estado persistido.
+
+---
+
+## 5. Escolhas Técnicas e Justificativas
+
+| Decisão | Justificativa |
 | :--- | :--- |
-| **Framework Google ADK** | Permite isolar escopos e prompts em subagentes especializados, garantindo determinismo e facilitando a manutenção. |
-| **Cálculo de Score via Tool Python** | Impede que a LLM estime ou invente pontuações de crédito, garantindo determinismo matemático. |
-| **Fórmula de Risco por Categoria** | A aplicação de tetos por componente evita que clientes com rendas muito elevadas neutralizem penalidades relativas a desemprego ou dívidas ativas. |
-| **`FileLock` + Escrita Atômica** | Elimina riscos de corrupção de arquivos planos em execuções concorrentes no Streamlit. |
-| **Painel Lateral de Debug (`st.sidebar`)** | Separa a experiência do cliente (chat limpo) da visão de auditoria do avaliador (exibição do agente ativo e status de autenticação). |
+| **Google ADK** | Cada agente tem prompt, tools e callbacks próprios, e a transferência entre eles (`transfer_to_agent`) já vem pronta. |
+| **Score calculado por tool Python** | A LLM coleta as respostas; o número vem de uma fórmula fixa e testada. |
+| **Tetos por componente do score** | Impedem que uma renda muito alta compense sozinha desemprego ou dívidas. |
+| **`FileLock` e escrita atômica** | Evitam atualizações perdidas e arquivos truncados quando há requisições simultâneas. |
+| **Barra lateral de depuração (`st.sidebar`)** | Mostra o agente ativo e o status de autenticação para quem testa, sem colocar essas informações no chat. |
 
-### 🔒 Concorrência, Concessão de Crédito e Auditoria
-Como o **Streamlit** executa requisições em múltiplas threads simultâneas, o adaptador de persistência (`BancoAgilAdapter`) foi blindado com técnicas de nível produtivo:
-1. **Bloqueio Interprocessos (`FileLock`):** Instâncias de `_clientes_lock` e `_solicitacoes_lock` protegem o ciclo *Read-Modify-Write*, eliminando o problema de atualizações perdidas (*lost updates*).
-2. **Escrita Atômica (`os.replace` + `os.fsync`):** Gravações em `clientes.csv` ocorrem primeiro em arquivos temporários com nivelamento de buffer em disco (`os.fsync`) antes da substituição atômica (`os.replace`), garantindo que o arquivo nunca seja truncado ou corrompido para 0 bytes em caso de falha.
+### Persistência
+O `BancoAgilAdapter` protege os CSVs de duas formas:
+1. **`FileLock`:** as travas `_clientes_lock` e `_solicitacoes_lock` cobrem o ciclo de leitura, alteração e escrita, para que duas requisições não sobrescrevam a alteração uma da outra.
+2. **Escrita atômica:** `clientes.csv` é gravado primeiro num arquivo temporário (com `os.fsync`) e depois substituído com `os.replace`, de modo que uma falha no meio da escrita não deixa o arquivo truncado.
 
-### 📊 Governança Dinâmica de Crédito & Auditoria em UTC
-> A concessão de ajuste de limite é gerenciada dinamicamente pela leitura da tabela de faixas de score (`data/score_limite.csv`) e estritamente auditada a cada requisição (seja aprovada ou rejeitada) no arquivo `data/solicitacoes_aumento_limite.csv` com timestamps em UTC no padrão **ISO 8601**. Em um ambiente de produção corporativo, essa camada de I/O baseada em arquivos seria desacoplada e conectada diretamente a um **Motor de Regras de Crédito (BRMS - Business Rules Management System)** via API REST e a um barramento de eventos (ex: Kafka / RabbitMQ) para auditoria transacional e governança em tempo real.
+Em produção, os CSVs seriam trocados por um banco de dados, e a decisão de limite, por um serviço de regras de crédito.
 
-### 🛡️ Defense in Depth (Sanduíche de Guardrails)
-O sistema adota o padrão de segurança corporativo de Defesa em Profundidade para blindar os agentes de inteligência artificial contra ataques de **Prompt Injection**, **Jailbreak** e **Prompt Leakage**:
-1. **Input Guardrail Híbrido (`input_middleware.py`):** 
-   - **Determinístico (Regex):** Bloqueia instantaneamente termos óbvios de override com latência zero.
-   - **Semântico (LLM):** Classifica a mensagem em 3 níveis — `SEGURO`, `FORA_DE_ESCOPO` (ex: pedido de código, receitas; segue para o `agente_fora_escopo`) e `ATAQUE` (persona de autoridade para mudar regras, pedido de prompt/ferramentas, dados de outros clientes). **Só `ATAQUE` encerra o atendimento.**
-   - **Uma chamada por turno:** o veredito fica no estado da sessão (`temp:guardrail_entrada`, chaveado pelo `invocation_id`) e é reaproveitado pelos subagentes que recebem o turno por transferência. Mensagens só com números e pontuação (CPF, data, valores) dispensam a chamada.
-2. **Output Guardrail (`output_middleware.py`):** Intercepta a resposta gerada pelo Agente antes de enviar ao usuário. A regex de termos internos (nomes de ferramentas, "system prompt") roda em toda resposta; a LLM só é consultada diante de sinal suspeito (bloco de código ou texto longo sem nenhum termo bancário).
-   - **Política de falha explícita** (erro, timeout ou resposta fora do formato), configurável via `.env` (veja [`root_agent/config.py`](root_agent/config.py)): entrada *fail-closed* nos agentes de crédito/score e *fail-open* com log na conversa geral; saída *fail-closed*.
-   - **Métricas:** cada chamada registra latência e contagem acumulada do turno no log (`guardrail.llm | ... latencia_ms=... chamadas_turno=...`).
-3. **Prompts Enxutos:** Com as camadas externas garantindo a segurança, os *System Prompts* dos subagentes ficam limpos e focados exclusivamente na lógica de negócio e no bom atendimento, economizando tokens e reduzindo a latência global.
+### Guardrails de entrada e saída
+1. **Entrada (`input_middleware.py`):**
+   - **Regex:** bloqueia padrões explícitos de prompt injection ("ignore as instruções", "system prompt"), sem chamar a LLM.
+   - **Classificador (LLM):** classifica a mensagem em `SEGURO`, `FORA_DE_ESCOPO` (receitas, pedidos de código etc., que seguem para o `agente_fora_escopo`) ou `ATAQUE` (persona de autoridade para mudar regras, pedido de prompt ou ferramentas, dados de outros clientes). Só `ATAQUE` encerra o atendimento.
+   - **Uma chamada por turno:** o veredito fica no estado (`temp:guardrail_entrada`, chaveado pelo `invocation_id`) e é reaproveitado pelos agentes que recebem o turno por transferência. Mensagens só com números e pontuação (CPF, data, valores) não chamam o classificador.
+2. **Saída (`output_middleware.py`):** uma regex barra nomes de tools e termos internos em toda resposta. A LLM só é consultada quando há sinal suspeito (bloco de código, ou texto longo sem nenhum termo bancário).
+   - **Política de falha** (erro, timeout ou resposta fora do formato), configurável no `.env` (veja [`root_agent/config.py`](root_agent/config.py)): na entrada, bloqueia nos agentes de crédito e score e deixa passar, com log, na conversa geral; na saída, bloqueia.
+   - **Métricas:** cada chamada registra no log a latência e a contagem de chamadas do turno (`guardrail.llm | ... latencia_ms=... chamadas_turno=...`).
 
-### 🔐 Autorização Determinística (não depende do prompt)
-1. **Identidade só pela sessão (anti-IDOR):** as tools de crédito e score não recebem CPF da LLM; o cliente é resolvido exclusivamente a partir de `cliente_autenticado` no estado da sessão (`auth_guard.cpf_do_cliente_autenticado`).
-2. **`before_tool_callback` na triagem e nos subagentes:** qualquer tool de negócio (crédito, score, câmbio) é bloqueada enquanto `is_authenticated` não for `True`. Na triagem, o mesmo guard barra `transfer_to_agent` para os agentes especializados antes do login (só `agente_fora_escopo` fica liberado): com o histórico de um login anterior, a LLM chegava a transferir após o "tchau" mesmo com o prompt proibindo.
-3. **Autenticação determinística e *fail-closed*:** o `input_middleware` valida CPF + data de nascimento direto no `BancoAgilAdapter`, sem passar pela LLM. O login só é concedido diante de um retorno explícito de sucesso; erros técnicos não autenticam nem consomem tentativas.
-4. **Estado protegido na API:** o `ProtectedStateMiddleware` rejeita (403) requisições que tentem definir chaves de autenticação via `state`/`stateDelta` nos endpoints REST do ADK.
-5. **Minimização de PII:** CPF e data de nascimento não chegam ao provedor da LLM. A autenticação não usa tool, os prompts de sistema recebem apenas o nome do cliente, e CPFs/datas no histórico são mascarados antes de cada chamada (agentes e classificador semântico). A máscara (`root_agent/domain/pii.py`) cobre todo formato de CPF aceito pelo login (com pontos, traços, barras ou espaços) e datas numéricas, ISO e por extenso ("15 de março de 1985"), sem mascarar valores em reais. O `MascaramentoCredenciaisPlugin` mascara a mensagem antes de o Runner gravá-la no histórico da sessão; o texto digitado fica só em memória (`temp:`) durante o turno. A data de nascimento nunca é persistida.
+### Autorização (fora do prompt)
+1. **Cliente identificado só pela sessão:** as tools de crédito e score não recebem CPF da LLM; o cliente vem de `cliente_autenticado` no estado da sessão (`auth_guard.cpf_do_cliente_autenticado`). Isso impede que um cliente consulte ou altere dados de outro.
+2. **`before_tool_callback` em todos os agentes com tools:** as tools de crédito, score e câmbio ficam bloqueadas enquanto `is_authenticated` não for `True`. Na triagem, o mesmo callback barra `transfer_to_agent` para os agentes especializados antes do login (só `agente_fora_escopo` fica liberado): com o histórico de um login anterior, a LLM chegava a transferir depois do "tchau", mesmo com o prompt proibindo.
+3. **Autenticação sem LLM:** o `input_middleware` valida CPF e data de nascimento direto no `BancoAgilAdapter`. O login só é concedido com um retorno explícito de sucesso; erros técnicos não autenticam nem contam como tentativa.
+4. **Estado protegido na API:** o `ProtectedStateMiddleware` recusa (403) requisições que tentem definir chaves de autenticação via `state`/`stateDelta` nos endpoints REST do ADK.
+5. **PII fora da LLM:** CPF e data de nascimento não são enviados ao provedor da LLM. A autenticação não usa tool, os prompts recebem só o nome do cliente, e CPFs e datas no histórico são mascarados antes de cada chamada (agentes e classificador). A máscara (`root_agent/domain/pii.py`) cobre os formatos de CPF aceitos no login (com pontos, traços, barras ou espaços) e datas numéricas, ISO e por extenso ("15 de março de 1985"), sem mascarar valores em reais. O `MascaramentoCredenciaisPlugin` mascara a mensagem antes de o Runner gravá-la no histórico; o texto original fica só em memória (`temp:`) durante o turno. A data de nascimento não é persistida.
 6. **API fechada por padrão:** a API REST do ADK não tem autenticação própria. Com `BANCO_AGIL_API_TOKEN` definido, toda rota (exceto `/health`) exige `Authorization: Bearer <token>`; sem ele, só conexões locais (loopback) são aceitas. As respostas de sessão e de execução saem sem CPF e data de nascimento (`RedacaoPiiMiddleware`), e o Streamlit gera um `user_id` aleatório por sessão do navegador.
 7. **Dev UI do ADK opcional:** `/dev-ui` só é servida com `BANCO_AGIL_DEV_UI=true`.
 
-> ⚠️ **Limite conhecido:** o CPF (só dígitos) continua no estado da sessão em `root_agent/.adk/session.db` enquanto o cliente está autenticado e no histórico de eventos depois disso, porque as tools resolvem o cliente por ele. A API não o expõe, mas quem tiver acesso ao arquivo consegue lê-lo. Em produção, o próximo passo seria cifrar esse valor ou trocá-lo por uma referência opaca.
+> **Limitações conhecidas:**
+> * O CPF (só dígitos) fica no estado da sessão em `root_agent/.adk/session.db` enquanto o cliente está autenticado, e no histórico de eventos depois disso, porque as tools identificam o cliente por ele. A API não o expõe, mas quem tiver acesso ao arquivo consegue lê-lo. Em produção, o próximo passo seria cifrar esse valor ou trocá-lo por uma referência opaca.
+> * O limite de 3 tentativas vale por atendimento: depois do bloqueio, o contador volta a zero e uma nova sessão pode tentar de novo. Não há bloqueio por CPF nem limite de taxa.
 
 ---
 
-## 🚀 6. Começando (Tutorial de Execução e Testes)
+## 6. Tutorial de Execução e Testes
 
 Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
 
@@ -189,7 +172,7 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
    ```
    > As variáveis opcionais `LLM_MODEL_NAME`, `LLM_BASE_URL` e `LLM_API_KEY` permitem trocar o modelo/provedor via LiteLLM (padrão: `gemini/gemini-2.5-flash`).
    > Para acessar a API de outra máquina ou container, defina `BANCO_AGIL_API_TOKEN` no `.env` (o Streamlit envia o mesmo valor). `BANCO_AGIL_DEV_UI=true` liga a interface de desenvolvimento do ADK em `/dev-ui`.
-   > 💡 **Dica (Windows):** Ao criar o arquivo pelo Bloco de Notas, certifique-se de salvar como `Todos os arquivos (*.*)` com o nome `.env`, para evitar que seja salvo incorretamente como `.env.txt`.
+   > **Windows:** ao criar o arquivo pelo Bloco de Notas, salve como `Todos os arquivos (*.*)` com o nome `.env`, para que ele não fique como `.env.txt`.
 
 5. **Iniciar o Servidor Backend (API / Google ADK):**
    A interface web precisa da API do backend em execução para processar as mensagens. Em um terminal com o ambiente virtual ativado:
@@ -205,29 +188,29 @@ Siga os passos abaixo para preparar e executar o ambiente de desenvolvimento.
    ```
    Acesse a interface no navegador através do endereço local informado (geralmente `http://localhost:8501`).
 
-   > 🛑 **Encerrar a Aplicação:** Para finalizar a execução a qualquer momento, pressione `Ctrl + C` em cada um dos dois terminais.
+   > Para encerrar, pressione `Ctrl + C` nos dois terminais.
 
 ---
 
-### 👤 Credenciais de Teste para Avaliação Rápida
+### Credenciais de teste
 
-Para testar o fluxo de autenticação e os cenários dos agentes no Streamlit ou via API, utilize qualquer uma das combinações de clientes cadastradas na base [`data/clientes.csv`](data/clientes.csv):
+Para testar no Streamlit ou via API, use qualquer cliente cadastrado em [`data/clientes.csv`](data/clientes.csv):
 
 | Cliente | CPF (Com ou Sem Pontuação) | Data de Nascimento | Score Atual | Limite Atual | Conta | Cenário Sugerido |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **João Silva** *(Recomendado)* | `123.456.789-00` ou `12345678900` | `15/03/1985` | 824 | R$ 50.000,00 | 0001 | Limite atual já acima do teto da matriz para o score (R$ 10.000,00): ideal para testar recusa de aumento e oferta de entrevista |
-| **Maria Santos** | `987.654.321-00` ou `98765432100` | `22/07/1990` | 580 | R$ 2.500,00 | 0002 | Score intermediário, ideal para aumento de limite ou entrevista |
-| **Roberto Mendes** | `999.000.111-22` ou `99900011122` | `12/08/1975` | 450 | R$ 500,00 | 0009 | Score baixo, útil para testar limites e recálculo de pontuação |
+| **João Silva** *(Recomendado)* | `123.456.789-00` ou `12345678900` | `15/03/1985` | 824 | R$ 50.000,00 | 0001 | Limite atual acima do teto da faixa do score (R$ 10.000,00): qualquer pedido de aumento é recusado, com oferta de entrevista |
+| **Maria Santos** | `987.654.321-00` ou `98765432100` | `22/07/1990` | 580 | R$ 2.500,00 | 0002 | Score intermediário: aumento de limite ou entrevista |
+| **Roberto Mendes** | `999.000.111-22` ou `99900011122` | `12/08/1975` | 450 | R$ 500,00 | 0009 | Score baixo: limites e recálculo de score |
 
-> 💡 **Exemplo Rápido para Copiar e Colar no Chat quando solicitado:**
+> **Para copiar e colar no chat:**
 > * **CPF:** `123.456.789-00`
 > * **Data de Nascimento:** `15/03/1985`
 > 
-> *Nota: O agente aceita o CPF tanto com máscara quanto apenas números. Na 3ª tentativa incorreta consecutiva, o atendimento é encerrado e a sessão é reiniciada.*
+> O CPF pode ser digitado com ou sem pontuação. Na 3ª tentativa incorreta consecutiva, o atendimento é encerrado e a sessão é reiniciada.
 
 ---
 
-### 🧪 Execução da Suíte de Testes Automatizados
+### Testes automatizados
 
 O projeto tem uma suíte `pytest` dividida em quatro camadas:
 
@@ -236,17 +219,17 @@ O projeto tem uma suíte `pytest` dividida em quatro camadas:
 | **Unitária** | `tests/unit/` | 367 | Domínio (`guardrails.py`), tools, middlewares, presenters, adapter (incluindo escrita atômica e concorrência com threads) | Nenhuma |
 | **Integração** | `tests/integration/` | 19 | Tools de crédito + `BancoAgilAdapter` reais sobre CSVs temporários, sem mocks: matriz de score, persistência de limite e score, auditoria append-only em UTC. Chamadas de guardrail por turno e reset de sessão persistido no `InMemoryRunner` do ADK, com LLMs roteirizadas. API com token, redação de PII e credenciais fora do histórico da sessão | Nenhuma |
 | **E2E** | `tests/e2e/` | 6 | Autenticação, encerramento e consulta mista via API do ADK com o modelo Gemini, conflito/fila de sessão e carregamento da UI Streamlit. As asserções usam sinais determinísticos dos eventos do `/run` (agente, transferências, tools, `stateDelta`), não o texto livre da LLM. Sem chave de API, os testes com LLM são pulados | Internet + `GEMINI_API_KEY` |
-| **Avaliação (evals)** | `tests/evals/` | 53 cenários | Comportamento dos agentes com a LLM real: roteamento, tools e argumentos, estado final, dados persistidos e LLM como juiz. Fica fora do `pytest` padrão (ver [seção 7](#-7-avaliação-de-agentes-evals)) | Internet + `GEMINI_API_KEY` + `deepeval` |
+| **Avaliação (evals)** | `tests/evals/` | 53 cenários | Comportamento dos agentes com a LLM real: roteamento, tools e argumentos, estado final, dados persistidos e LLM como juiz. Fica fora do `pytest` padrão (ver [seção 7](#7-avaliação-de-agentes-evals)) | Internet + `GEMINI_API_KEY` + `deepeval` |
 
 > Números de `pytest --collect-only -q` (e de `pytest -m eval --collect-only -q` para os evals). Após alterar a suíte, atualize a tabela com essa saída.
 
 #### 1. Ativar o Ambiente Virtual
-Certifique-se de estar com o ambiente virtual ativo no terminal:
+Com o ambiente virtual ativo no terminal:
 * **Linux / macOS:** `source .venv/bin/activate`
 * **Windows:** `.\.venv\Scripts\Activate.ps1`
 
 #### 2. Executar a Suíte Completa com Relatório de Cobertura
-Como os parâmetros já estão definidos no arquivo `pytest.ini`, basta executar:
+Os parâmetros estão em `pytest.ini`:
 
 ```bash
 # Executar todos os testes com validação de cobertura de código
@@ -254,23 +237,23 @@ pytest
 ```
 *(Ou explicitamente: `pytest --cov=root_agent --cov-report=term-missing`)*
 
-> ⚠️ **Anotação Importante sobre a Suíte Completa:**
+> **Sobre a suíte completa:**
 > * **Chamadas E2E Reais:** os testes de `tests/e2e/` chamam o modelo Gemini. A execução completa **requer conexão com a internet** e a variável `GEMINI_API_KEY` configurada no arquivo `.env`.
 > * **Tempo de Execução:** os 392 testes levam cerca de **30 segundos**, quase todo o tempo gasto nos E2E.
 > * **Não determinismo:** os E2E que dependem de uma decisão da LLM repetem a conversa inteira uma vez (com aviso) antes de falhar; invariantes garantidas pelo código falham na hora.
 > * **Cobertura:** ~97% de cobertura de linhas em `root_agent`, com 100% em `guardrails.py`. O mínimo exigido é **75%** (`--cov-fail-under=75` em `pytest.ini`).
 
-#### 3. Execução Rápida (Unitários + Integração, 100% Determinísticos)
-Para validar lógica de negócio, middlewares, presenters, guardrails e adapter em ~2 segundos, sem internet nem chave de LLM:
+#### 3. Só unitários e integração (sem LLM)
+Roda em poucos segundos, sem internet nem chave de LLM:
 
 ```bash
 pytest tests/unit/ tests/integration/
 ```
-> 🎯 **Cobertura sem E2E:** unitários e integração juntos atingem **~96% de cobertura** de `root_agent` (só os unitários: ~96%), acima dos **75%** exigidos.
+> Unitários e integração juntos cobrem cerca de 97% das linhas de `root_agent`.
 
 ---
 
-## 📏 7. Avaliação de agentes (evals)
+## 7. Avaliação de agentes (evals)
 
 A cobertura de linhas mede o código Python, não o comportamento da LLM. A suíte em [`tests/evals/`](tests/evals/) mede, com a LLM real, se os agentes **roteiam para o agente certo, chamam as tools certas com os argumentos certos, deixam o estado correto e respondem sem expor a arquitetura interna**.
 
@@ -308,7 +291,7 @@ Execução completa em 28/09/2026 com `gemini/gemini-2.5-flash`, `EVAL_RUNS=1` e
 
 | Categoria | Acerto | Limiar |
 | :--- | ---: | ---: |
-| Autenticação, câmbio, correção de dado, entrevista, jailbreak, recusa com oferta de entrevista | 100% | 80–90% |
+| Autenticação, câmbio, correção de dado, entrevista, jailbreak, recusa com oferta de entrevista | 100% | 80% a 90% |
 | Encerramento ("tchau") | 75% | 80% |
 | IDOR | 60% | 100% |
 | Roteamento | 54% | 95% |
