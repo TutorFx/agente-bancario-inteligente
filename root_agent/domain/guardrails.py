@@ -7,6 +7,7 @@ CPF_RE = re.compile(r'^\d{11}$')
 DATA_RE = re.compile(r'^\d{2}/\d{2}/\d{4}$')
 MOEDAS_SUPORTADAS = {"USD", "EUR", "GBP", "ARS", "JPY", "BTC", "CHF"}
 MAX_TENTATIVAS_AUTH = 3
+TETO_SCORE_DESEMPREGADO = 600
 
 def limpar_cpf(cpf: str) -> str:
     return re.sub(r'\D', '', cpf)
@@ -61,8 +62,16 @@ def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
     - Comprometimento:       até 200 pts (relação despesas/renda, quanto menor melhor)
     - Dependentes:           até 150 pts (0=150, 1=120, 2=90, 3+=50)
     - Dívidas ativas:        até 150 pts (sem dívidas=150, com dívidas=0)
-    
+
     A soma dos tetos máximos individuais é exatamente 1.000 pontos.
+
+    Regras de borda:
+    - Renda <= 0: comprometimento vale 0 pts (não há renda para comprometer; sem
+      essa regra, renda zero e despesa zero concediam os 200 pts cheios).
+    - Desempregado: score final limitado a TETO_SCORE_DESEMPREGADO (600), mantendo o
+      cliente fora das faixas de limite >= 700 mesmo com renda declarada alta. O corte
+      aparece em `ajuste_teto_desemprego` (valor <= 0), de modo que a soma das parcelas
+      com o ajuste sempre bate com o score final.
     """
     # 1. Renda (max 300 pts)
     renda_bruta = max(0.0, float(entrevista.get("renda_mensal", 0) or 0))
@@ -80,9 +89,11 @@ def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
 
     # 3. Comprometimento Financeiro (max 200 pts)
     despesas = max(0.0, float(entrevista.get("despesas_mensais", 0) or 0))
-    renda_ref = max(1.0, renda_bruta)
-    comprometimento = despesas / renda_ref
-    parcela_comprometimento = max(0, min(200, int((1.0 - comprometimento) * 200)))
+    if renda_bruta <= 0:
+        parcela_comprometimento = 0
+    else:
+        comprometimento = despesas / renda_bruta
+        parcela_comprometimento = max(0, min(200, int((1.0 - comprometimento) * 200)))
 
     # 4. Dependentes (max 150 pts)
     num_dep = max(0, int(entrevista.get("num_dependentes", 0) or 0))
@@ -99,14 +110,6 @@ def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
         tem_dividas = bool(dividas_raw)
     parcela_dividas = 0 if tem_dividas else 150
 
-    detalhes = {
-        "parcela_renda": parcela_renda,
-        "parcela_emprego": parcela_emprego,
-        "parcela_comprometimento": parcela_comprometimento,
-        "parcela_dependentes": parcela_dependentes,
-        "parcela_dividas": parcela_dividas,
-    }
-
     score_bruto = (
         parcela_renda
         + parcela_emprego
@@ -114,7 +117,19 @@ def calcular_score_detalhado(entrevista: dict) -> tuple[int, dict]:
         + parcela_dependentes
         + parcela_dividas
     )
-    score_final = max(0, min(1000, score_bruto))
+
+    # 6. Teto para desempregado: renda declarada sem vínculo não sustenta faixas altas
+    teto = 1000 if parcela_emprego > 0 else TETO_SCORE_DESEMPREGADO
+    score_final = max(0, min(teto, score_bruto))
+
+    detalhes = {
+        "parcela_renda": parcela_renda,
+        "parcela_emprego": parcela_emprego,
+        "parcela_comprometimento": parcela_comprometimento,
+        "parcela_dependentes": parcela_dependentes,
+        "parcela_dividas": parcela_dividas,
+        "ajuste_teto_desemprego": score_final - score_bruto,
+    }
 
     return score_final, detalhes
 

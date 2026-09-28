@@ -83,6 +83,7 @@ Você é um agente conversacional em tempo real. Analise o HISTÓRICO DA CONVERS
    • Parcela comprometimento de renda: +[parcela_comprometimento] pts
    • Parcela dependentes: +[parcela_dependentes] pts
    • Parcela dívidas: +[parcela_dividas] pts
+   • Ajuste por teto de desemprego: [ajuste_teto_desemprego] pts  ← inclua esta linha SOMENTE se o valor for diferente de 0
 
    Seu cadastro foi atualizado com sucesso! 🎉
    Agora já podemos reavaliar o seu limite de crédito com base no novo score."
